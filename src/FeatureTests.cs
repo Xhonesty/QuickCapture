@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Input;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
@@ -24,6 +25,7 @@ internal static class FeatureTests
             using var expected = new Drawing.Icon(resource, 32, 32);
             using var actual = Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!)!;
             using var expectedImage = expected.ToBitmap(); using var extracted = actual.ToBitmap();
+            Ensure(expectedImage.GetPixel(0, 0).A == 0, "Icon still has an opaque white exterior");
             // The shell can return an icon sized for the current monitor DPI.
             using var actualImage = new Drawing.Bitmap(extracted, new Drawing.Size(32, 32));
             long difference = 0;
@@ -67,10 +69,11 @@ internal static class FeatureTests
             var button = toolbar.Children.OfType<Button>().Single(b => (string?)b.Content == "涂鸦");
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Ensure(editor.Tool == AnnotationTool.Freehand, "Doodle button not wired");
             toolbar.Children.OfType<Button>().Single(b => (string?)b.Content == "马赛克").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            var mode = toolbar.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "马赛克模式");
+            var content = (StackPanel)((Border)editor.OptionsFor(AnnotationTool.Mosaic).Popup.Child).Child;
+            var mode = content.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "马赛克模式");
             Ensure(mode.IsEnabled && !editor.MosaicFreehand, "Rectangle mosaic mode unavailable");
             mode.SelectedIndex = 1; Ensure(editor.MosaicFreehand, "Brush mosaic mode unavailable");
-            var size = toolbar.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "画笔粗细（原始像素）");
+            var size = content.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "画笔粗细（原始像素）");
             Ensure(size.IsEnabled && size.SelectedIndex == 3, "Mosaic brush size not restored");
             owner.Close(); return Task.CompletedTask;
         });
@@ -107,6 +110,72 @@ internal static class FeatureTests
                 settings.SnapToWindow = false; settings.Save(); Ensure(!Settings.Load().SnapToWindow, "Snap preference did not persist");
             }
             finally { selection.Close(); }
+        });
+        await check("Recording window snapping confirms region and keeps an independent switch", async () =>
+        {
+            var screen = Forms.Screen.PrimaryScreen!;
+            var bounds = new Drawing.Rectangle(screen.Bounds.X + 200, screen.Bounds.Y + 200, 500, 320);
+            var settings = new Settings { SnapToWindow = false, SnapRecordingToWindow = true };
+            SelectionResult? result = null;
+            var selection = new SelectionWindow(screen, UiChangeTests.SyntheticDesktop(screen.Bounds.Width, screen.Bounds.Height), true, value => result = value, settings,
+                snapTargets: new[] { new WindowTarget(new(1), "test", bounds) });
+            try
+            {
+                selection.Show(); await Task.Delay(100);
+                var point = selection.PointFromScreen(new Point(bounds.X + 100, bounds.Y + 100));
+                selection.UpdateWindowHover(point); Ensure(selection.HoveredRegion?.Rectangle == bounds, "Recording hover did not snap independently of screenshots");
+                UiChangeTests.Render(selection, "recording-window-snap.png");
+                selection.BeginSelection(point); selection.FinishSelection(point);
+                Ensure(result?.Region.Rectangle == bounds && selection.Editor == null, "Recording snap opened an editor or selected the wrong region");
+                result = null; settings.SnapRecordingToWindow = false; selection.UpdateWindowHover(point);
+                Ensure(selection.HoveredRegion == null, "Disabled recording snap still highlights windows");
+                selection.BeginSelection(point); selection.FinishSelection(point); Ensure(result == null, "Disabled recording snap still confirms clicks");
+                settings.SnapRecordingToWindow = true; selection.BeginSelection(point);
+                var end = selection.PointFromScreen(new Point(bounds.X + 200, bounds.Y + 180));
+                selection.MoveSelection(end); selection.FinishSelection(end);
+                Ensure(result?.Region.Width == 100 && result.Region.Height == 80, "Recording snap overrode manual dragging");
+                settings.Save(); var loaded = Settings.Load(); Ensure(!loaded.SnapToWindow && loaded.SnapRecordingToWindow, "Independent snap preferences did not persist");
+            }
+            finally { selection.Close(); }
+        });
+        await check("Hover-only tool options open below buttons and survive nested dropdowns", async () =>
+        {
+            var owner = new Window { Width = 800, Height = 350, Left = 250, Top = 180 };
+            Ui.Theme(owner); ThemeService.Apply("Light");
+            var original = UiChangeTests.SyntheticDesktop(800, 500);
+            using var editor = new ScreenshotEditor(owner, original, new Settings(), _ => { }, () => { });
+            var toolbar = editor.CreateToolbar(); owner.Content = toolbar;
+            var freehand = editor.OptionsFor(AnnotationTool.Freehand);
+            var mosaic = editor.OptionsFor(AnnotationTool.Mosaic);
+            try
+            {
+                owner.Show(); await Task.Delay(100);
+                Ensure(toolbar.Children.OfType<ComboBox>().Count() == 1, "Brush settings still occupy the toolbar");
+                var doodle = toolbar.Children.OfType<Button>().Single(b => (string?)b.Content == "涂鸦");
+                Ensure(!freehand.Popup.IsOpen && !mosaic.Popup.IsOpen, "Options visible before hover");
+                doodle.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent }); await Task.Delay(60);
+                Ensure(freehand.Popup.IsOpen && editor.Tool == AnnotationTool.Arrow, "Hover did not open settings or changed the active tool");
+                var buttonBottom = doodle.PointToScreen(new Point(0, doodle.ActualHeight));
+                var popupOrigin = ((Border)freehand.Popup.Child).PointToScreen(new Point(0, 0));
+                Ensure(popupOrigin.Y >= buttonBottom.Y, "Tool options did not appear below the button");
+                UiChangeTests.RenderElement((Border)freehand.Popup.Child, "hover-doodle-options.png");
+                var freehandContent = (StackPanel)((Border)freehand.Popup.Child).Child;
+                var size = freehandContent.Children.OfType<ComboBox>().Single();
+                size.IsDropDownOpen = true;
+                doodle.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseLeaveEvent }); await Task.Delay(250);
+                Ensure(freehand.Popup.IsOpen, "Moving into the dropdown closed the options");
+                size.SelectedIndex = 2; Ensure(editor.Tool == AnnotationTool.Freehand, "Choosing brush size did not activate doodle"); size.IsDropDownOpen = false;
+                await Task.Delay(250); Ensure(!freehand.Popup.IsOpen, "Options did not close after leaving");
+                var mosaicButton = toolbar.Children.OfType<Button>().Single(b => (string?)b.Content == "马赛克");
+                mosaicButton.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent }); await Task.Delay(60);
+                Ensure(mosaic.Popup.IsOpen && !freehand.Popup.IsOpen, "Hover opened multiple option panels");
+                var content = (StackPanel)((Border)mosaic.Popup.Child).Child;
+                var mode = content.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "马赛克模式"); mode.SelectedIndex = 1;
+                Ensure(editor.MosaicFreehand && editor.Tool == AnnotationTool.Mosaic, "Hover mode choice did not activate mosaic");
+                UiChangeTests.RenderElement((Border)mosaic.Popup.Child, "hover-mosaic-options.png");
+            }
+            finally { editor.Dispose(); owner.Close(); ThemeService.Apply("Dark"); }
+            Ensure(!freehand.Popup.IsOpen && !mosaic.Popup.IsOpen, "Popup remains open after disposal");
         });
     }
 

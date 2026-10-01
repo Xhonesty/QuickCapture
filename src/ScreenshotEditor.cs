@@ -18,7 +18,9 @@ internal sealed class ScreenshotEditor : IDisposable
     private readonly Action _complete;
     private readonly Dictionary<AnnotationTool, Button> _toolButtons = new();
     private readonly List<Point> _points = new();
-    private ComboBox? _mosaicMode, _brushSize;
+    private readonly Dictionary<AnnotationTool, HoverToolOptions> _options = new();
+    private ComboBox? _mosaicMode, _mosaicSize;
+    private TextBlock? _mosaicSizeLabel;
     private static readonly int[] BrushSizes = { 3, 6, 12, 24, 48 };
     private int _freehandWidth = 6, _mosaicWidth = 24;
     internal bool MosaicFreehand => _mosaicMode?.SelectedIndex == 1;
@@ -40,6 +42,7 @@ internal sealed class ScreenshotEditor : IDisposable
         Surface.MouseLeftButtonUp += EndAnnotation;
         Surface.LostMouseCapture += (_, _) => { if (_start != null) CancelStroke(); };
         _owner.PreviewKeyDown += KeyDown;
+        _owner.Deactivated += OwnerDeactivated;
     }
     public WrapPanel CreateToolbar(Action? reselect = null)
     {
@@ -51,15 +54,7 @@ internal sealed class ScreenshotEditor : IDisposable
         }
         foreach (var (label, tool) in new[] { ("箭头", AnnotationTool.Arrow), ("矩形", AnnotationTool.Rectangle), ("文字", AnnotationTool.Text), ("涂鸦", AnnotationTool.Freehand), ("马赛克", AnnotationTool.Mosaic) })
             _toolButtons[tool] = Add(label, () => SelectTool(tool));
-        _mosaicMode = new ComboBox { Width = 110, MinWidth = 110, Margin = new Thickness(0, 2, 4, 2), ToolTip = "马赛克模式", ItemsSource = new[] { "框选马赛克", "涂鸦马赛克" }, SelectedIndex = 0 };
-        _mosaicMode.SelectionChanged += (_, _) => UpdateBrushControls(); panel.Children.Add(_mosaicMode);
-        _brushSize = new ComboBox { Width = 74, MinWidth = 74, Margin = new Thickness(0, 2, 4, 2), ToolTip = "画笔粗细（原始像素）", ItemsSource = new[] { "3 px", "6 px", "12 px", "24 px", "48 px" }, SelectedIndex = 1 };
-        _brushSize.SelectionChanged += (_, _) =>
-        {
-            if (_brushSize.SelectedIndex < 0) return;
-            if (Tool == AnnotationTool.Freehand) _freehandWidth = BrushSizes[_brushSize.SelectedIndex];
-            else if (Tool == AnnotationTool.Mosaic && MosaicFreehand) _mosaicWidth = BrushSizes[_brushSize.SelectedIndex];
-        }; panel.Children.Add(_brushSize);
+        CreateHoverOptions();
         var colors = new ComboBox { Width = 80, MinWidth = 80, Margin = new Thickness(0, 2, 8, 2), ToolTip = "标注颜色", ItemsSource = new[] { "红色", "绿色", "黄色", "白色", "黑色" }, SelectedIndex = 0 };
         colors.SelectionChanged += (_, _) => _color = new[] { Color.FromRgb(255, 99, 115), Color.FromRgb(130, 226, 187), Colors.Gold, Colors.White, Colors.Black }[colors.SelectedIndex]; panel.Children.Add(colors);
         Add("撤销", Surface.Undo).ToolTip = "Ctrl+Z";
@@ -81,15 +76,35 @@ internal sealed class ScreenshotEditor : IDisposable
             button.SetResourceReference(Control.BackgroundProperty, key == tool ? "Accent" : "ButtonBackground");
             button.SetResourceReference(Control.ForegroundProperty, key == tool ? "AccentForeground" : "TextPrimary");
         }
-        UpdateBrushControls(); ToolChanged?.Invoke();
+        foreach (var (key, options) in _options) if (key != tool) options.Hide();
+        ToolChanged?.Invoke();
     }
-    private void UpdateBrushControls()
+    private void CreateHoverOptions()
     {
-        if (_mosaicMode != null) _mosaicMode.IsEnabled = Tool == AnnotationTool.Mosaic;
-        if (_brushSize == null) return;
-        _brushSize.IsEnabled = Tool == AnnotationTool.Freehand || Tool == AnnotationTool.Mosaic && MosaicFreehand;
-        _brushSize.SelectedIndex = Array.IndexOf(BrushSizes, Tool == AnnotationTool.Freehand ? _freehandWidth : _mosaicWidth);
+        TextBlock Label(string text) => new() { Text = text, Margin = new Thickness(0, 0, 0, 7), FontSize = 12 };
+        ComboBox Sizes(int width) => new() { Width = 180, ToolTip = "画笔粗细（原始像素）", ItemsSource = new[] { "3 px", "6 px", "12 px", "24 px", "48 px" }, SelectedIndex = Array.IndexOf(BrushSizes, width) };
+        var freehand = new StackPanel(); freehand.Children.Add(Label("涂鸦粗细"));
+        var freehandSize = Sizes(_freehandWidth); freehand.Children.Add(freehandSize);
+        freehandSize.SelectionChanged += (_, _) => { if (freehandSize.SelectedIndex >= 0) { _freehandWidth = BrushSizes[freehandSize.SelectedIndex]; SelectTool(AnnotationTool.Freehand); } };
+        AddOptions(AnnotationTool.Freehand, freehand);
+        var mosaic = new StackPanel(); mosaic.Children.Add(Label("马赛克模式"));
+        _mosaicMode = new ComboBox { Width = 180, ToolTip = "马赛克模式", ItemsSource = new[] { "框选马赛克", "涂鸦马赛克" }, SelectedIndex = 0 }; mosaic.Children.Add(_mosaicMode);
+        _mosaicSizeLabel = Label("画笔粗细"); _mosaicSizeLabel.Margin = new Thickness(0, 12, 0, 7); mosaic.Children.Add(_mosaicSizeLabel);
+        _mosaicSize = Sizes(_mosaicWidth); mosaic.Children.Add(_mosaicSize);
+        _mosaicMode.SelectionChanged += (_, _) => { UpdateMosaicSize(); SelectTool(AnnotationTool.Mosaic); };
+        _mosaicSize.SelectionChanged += (_, _) => { if (_mosaicSize.SelectedIndex >= 0) { _mosaicWidth = BrushSizes[_mosaicSize.SelectedIndex]; SelectTool(AnnotationTool.Mosaic); } };
+        UpdateMosaicSize(); AddOptions(AnnotationTool.Mosaic, mosaic);
+        void AddOptions(AnnotationTool tool, StackPanel content) => _options[tool] = new(_toolButtons[tool], content, () =>
+        { foreach (var (other, options) in _options) if (other != tool) options.Hide(); });
     }
+    private void UpdateMosaicSize()
+    {
+        if (_mosaicSize == null || _mosaicSizeLabel == null) return;
+        _mosaicSize.Visibility = _mosaicSizeLabel.Visibility = MosaicFreehand ? Visibility.Visible : Visibility.Collapsed;
+    }
+    internal HoverToolOptions OptionsFor(AnnotationTool tool) => _options[tool];
+    private void HideOptions() { foreach (var options in _options.Values) options.Hide(); }
+    private void OwnerDeactivated(object? sender, EventArgs e) => HideOptions();
     private bool IsBrush => Tool == AnnotationTool.Freehand || Tool == AnnotationTool.Mosaic && MosaicFreehand;
     private Annotation Stroke(Point start, Point end) => new(Tool == AnnotationTool.Mosaic && MosaicFreehand ? AnnotationTool.MosaicBrush : Tool,
         start, end, _color, Points: IsBrush ? _points.ToArray() : null, Width: IsBrush ? (Tool == AnnotationTool.Freehand ? _freehandWidth : _mosaicWidth) : 3);
@@ -102,6 +117,7 @@ internal sealed class ScreenshotEditor : IDisposable
     private void BeginAnnotation(object sender, MouseButtonEventArgs e)
     {
         if (_finishing) return;
+        HideOptions();
         e.Handled = true; Surface.Focus(); var point = Clamp(e.GetPosition(Surface));
         if (Tool == AnnotationTool.Text)
         {
@@ -173,6 +189,8 @@ internal sealed class ScreenshotEditor : IDisposable
     public void Dispose()
     {
         _owner.PreviewKeyDown -= KeyDown;
+        _owner.Deactivated -= OwnerDeactivated;
+        foreach (var options in _options.Values) options.Dispose(); _options.Clear();
         CancelStroke();
     }
 }

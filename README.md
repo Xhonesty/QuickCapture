@@ -1,6 +1,6 @@
 # 轻截 · QuickCapture
 
-Windows 个人截图与录屏工具。C# / WPF，使用 Windows 原生采集接口；通过 ScreenRecorderLib 使用 Media Foundation 实时编码和 WASAPI 音频采集。当前版本 0.3.0。
+Windows 个人截图与录屏工具。C# / WPF，使用 Windows 原生采集接口；通过 ScreenRecorderLib 使用 Media Foundation 实时编码和 WASAPI 音频采集。当前版本 0.4.0。
 
 ## Git 仓库
 
@@ -27,7 +27,9 @@ cd QuickCapture
 
 截图卡片中的“自动吸附窗口”默认开启，也可在设置中关闭。鼠标悬停会预选可见窗口，单击进入原位标注；按住并拖动始终自由框选。窗口跨屏时截取当前显示器内的部分。
 
-标注工具栏新增“涂鸦”，可选择颜色和画笔粗细。选中“马赛克”后，可在“框选马赛克 / 涂鸦马赛克”间切换；涂鸦模式沿鼠标笔迹遮挡内容，单次笔迹可整体撤销。
+录屏卡片也提供独立的“自动吸附窗口”开关，默认开启。在录屏的“框选区域”模式中，悬停预选窗口、单击开始录制；拖动仍可自由框选。吸附确认后按该固定区域录制。
+
+标注工具栏提供“涂鸦”，可选择颜色和画笔粗细。鼠标悬停在“涂鸦”按钮上时，粗细面板在按钮下方展开；悬停在“马赛克”上时，展开“框选马赛克 / 涂鸦马赛克”选择，涂鸦模式还显示画笔粗细。移入面板及下拉框可继续选择，移开后自动收起。选择粗细或模式会启用对应工具，单次笔迹可整体撤销。
 
 首次启动时，若默认快捷键被其他软件占用，会自动尝试 `Ctrl+Alt+F8 / F9` 等备用组合；实际快捷键显示在主界面。已有设置的快捷键冲突时会显示提示，可在设置中修改。修改失败时保留先前成功注册的快捷键。
 
@@ -87,10 +89,11 @@ cd QuickCapture
 | `MainWindow.xaml` / `.cs` | 主界面、托盘、截图录屏流程 |
 | `SelectionWindow.cs` / `ToolbarPlacement.cs` | 各显示器原位选区、工具栏避让与 DPI 坐标转换 |
 | `AnnotationSurface.cs` / `ScreenshotEditor.cs` / `EditorWindow.cs` | 共享标注操作、导出、复制、贴图 |
+| `HoverToolOptions.cs` | 按钮下方的悬停设置面板、下拉选择与自动收起 |
 | `ThemeService.cs` / `App.xaml` | 浅色与深色资源、即时主题切换 |
 | `WindowSnapper.cs` / `Native.cs` | 窗口层级、可见边界与悬停吸附 |
 | `RecordingFrame.cs` | 精确选区录屏边框、鼠标穿透与捕获排除 |
-| `Assets/app.png` / `app.ico` | 提供的原图及 16–256 像素多尺寸图标 |
+| `Assets/app.png` / `app.ico` | 去白边的透明图标及 16–256 像素多尺寸 ICO；处理提示词见 `docs/icon-processing.md` |
 | `CaptureService.cs` / `RecorderService.cs` | 原生采集、实时编码、音频与文件完成 |
 | `HotkeyService.cs` / `Settings.cs` | 快捷键注册和本地设置 |
 

@@ -12,6 +12,7 @@ if ($Offline) { $publishArgs += @('--source', (Join-Path $projectRoot '.tools\fe
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination (Join-Path $projectRoot 'dist')
 if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\verification.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\verification.md') -Destination (Join-Path $projectRoot 'dist\verification.md') }
+if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\icon-processing.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\icon-processing.md') -Destination (Join-Path $projectRoot 'dist\icon-processing.md') }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $projectRoot 'dist\QuickCapture-NOTICES.txt')
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $projectRoot 'dist\QuickCapture.runtimeconfig.json') -Raw | ConvertFrom-Json
 foreach ($framework in $runtimeConfig.runtimeOptions.includedFrameworks) {

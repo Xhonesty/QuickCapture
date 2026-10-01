@@ -73,6 +73,7 @@ public partial class MainWindow : Window
     {
         AutoSaveBox.IsChecked = _settings.AutoSaveScreenshot; SystemAudioBox.IsChecked = _settings.SystemAudio;
         SnapWindowBox.IsChecked = _settings.SnapToWindow;
+        SnapRecordWindowBox.IsChecked = _settings.SnapRecordingToWindow;
         MicrophoneBox.IsChecked = _settings.Microphone; CursorBox.IsChecked = _settings.Cursor;
         FpsBox.SelectedIndex = _settings.FramesPerSecond == 15 ? 0 : _settings.FramesPerSecond == 60 ? 2 : 1;
         ShotKeyLabel.Text = _settings.ScreenshotHotkey; RecordKeyLabel.Text = _settings.RecordingHotkey;
@@ -83,6 +84,7 @@ public partial class MainWindow : Window
     {
         _settings.AutoSaveScreenshot = AutoSaveBox.IsChecked == true;
         _settings.SnapToWindow = SnapWindowBox.IsChecked == true;
+        _settings.SnapRecordingToWindow = SnapRecordWindowBox.IsChecked == true;
         _settings.SystemAudio = SystemAudioBox.IsChecked == true; _settings.Microphone = MicrophoneBox.IsChecked == true;
         _settings.Cursor = CursorBox.IsChecked == true; _settings.FramesPerSecond = new[] { 15, 30, 60 }[Math.Max(0, FpsBox.SelectedIndex)];
         _settings.Save();
@@ -167,7 +169,7 @@ public partial class MainWindow : Window
             Hide(); await Task.Delay(180);
             if (source == null)
             {
-                var region = await SelectionWindow.SelectAsync(true); if (region == null) return;
+                var region = await SelectionWindow.SelectAsync(true, _settings); if (region == null) return;
                 source = RecorderService.RegionSource(region.Region); _settings.LastRegion = region.Region; _settings.Save();
                 recordingRegion = region.Region;
                 await Task.Delay(120);
@@ -202,6 +204,7 @@ public partial class MainWindow : Window
         RecordButton.Content = _recorder.IsBusy ? "停止并保存" : "开始录屏";
         RepeatButton.IsEnabled = !_recorder.IsBusy && _settings.LastRegion != null;
         SystemAudioBox.IsEnabled = MicrophoneBox.IsEnabled = FpsBox.IsEnabled = CursorBox.IsEnabled = !_recorder.IsBusy;
+        SnapRecordWindowBox.IsEnabled = !_recorder.IsBusy;
     }
     private void RefreshRecent()
     {

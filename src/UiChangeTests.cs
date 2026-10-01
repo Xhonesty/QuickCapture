@@ -128,6 +128,8 @@ internal static class UiChangeTests
         await FeatureTests.RunUiAsync(check);
     }
     internal static void Render(Window window, string name)
+        => RenderElement(window, name);
+    internal static void RenderElement(FrameworkElement window, string name)
     {
         window.UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(window);

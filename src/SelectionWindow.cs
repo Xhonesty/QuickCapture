@@ -70,13 +70,15 @@ internal sealed class SelectionWindow : Window
         MouseMove += (_, e) => MoveSelection(e.GetPosition(_canvas));
         MouseLeftButtonUp += (_, e) => FinishSelection(e.GetPosition(_canvas));
     }
-    private string SelectionHint => _recording ? "拖动选择录屏区域 · 松开开始 · Esc 取消" :
-        _settings?.SnapToWindow == true ? "悬停吸附窗口 · 单击确认 · 拖动自由框选 · Esc 取消" : "拖动框选 · 原位标注 · Enter 复制 · Esc 取消";
+    private bool SnapEnabled => _recording ? _settings?.SnapRecordingToWindow == true : _settings?.SnapToWindow == true;
+    private string SelectionHint => _recording ?
+        SnapEnabled ? "悬停吸附窗口 · 单击开始录屏 · 拖动自由框选 · Esc 取消" : "拖动选择录屏区域 · 松开开始 · Esc 取消" :
+        SnapEnabled ? "悬停吸附窗口 · 单击确认 · 拖动自由框选 · Esc 取消" : "拖动框选 · 原位标注 · Enter 复制 · Esc 取消";
     internal void UpdateWindowHover(Point point)
     {
         if (_locked || Editor != null || _start != null) return;
         var physical = PointToScreen(point);
-        _hoverRegion = !_recording && _settings?.SnapToWindow == true
+        _hoverRegion = SnapEnabled
             ? WindowSnapper.Find(new Drawing.Point((int)Math.Round(physical.X), (int)Math.Round(physical.Y)), _screen.Bounds, _screen.DeviceName, _snapTargets) : null;
         if (_hoverRegion is { } region)
         {
@@ -180,13 +182,14 @@ internal sealed class SelectionWindow : Window
         RemoveEditor(); _hoverRegion = null; _pressedWindow = null; _mask.Selection = null; _selection.Visibility = _size.Visibility = Visibility.Hidden;
         _tip.Visibility = Visibility.Visible; Cursor = Cursors.Cross; _modeChanged?.Invoke(this, false); Activate(); Focus();
     }
-    public static Task<SelectionResult?> SelectAsync(bool recording) => OpenAsync(recording, null, null);
+    public static Task<SelectionResult?> SelectAsync(bool recording, Settings? settings = null) => OpenAsync(recording, settings, null);
     public static async Task EditScreenshotAsync(Settings settings, Action<string> saved) => await OpenAsync(false, settings, saved);
     private static async Task<SelectionResult?> OpenAsync(bool recording, Settings? settings, Action<string>? saved)
     {
         var task = new TaskCompletionSource<SelectionResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var screens = Forms.Screen.AllScreens;
-        var snapTargets = !recording && settings?.SnapToWindow == true ? Native.SnapTargets() : new List<WindowTarget>();
+        bool snapping = recording ? settings?.SnapRecordingToWindow == true : settings?.SnapToWindow == true;
+        var snapTargets = snapping ? Native.SnapTargets() : new List<WindowTarget>();
         var images = new List<BitmapSource>();
         foreach (var screen in screens) images.Add(await CaptureService.CaptureAsync(screen.Bounds));
         var windows = new List<SelectionWindow>(); bool finished = false;
