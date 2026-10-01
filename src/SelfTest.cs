@@ -146,6 +146,7 @@ internal static class SelfTest
             await Check("System loopback audio MP4 recording", () => Record("system-audio-video", new WindowRecordingSource(hwnd), true));
         if (Array.IndexOf(args, "--microphone") >= 0)
             await Check("Microphone and system audio mixed MP4 recording", () => Record("mixed-audio-video", new WindowRecordingSource(hwnd), true, false, true));
+        await Check("Region recording border, click-through frame and native crop pixels", () => FeatureTests.CheckRecordingFrameAsync(scene, directory));
         timer.Stop(); scene.Close();
         await Check("Main window layout rendering", async () =>
         {

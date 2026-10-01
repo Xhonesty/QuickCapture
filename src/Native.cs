@@ -24,14 +24,46 @@ internal static class Native
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] internal static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmBounds(IntPtr hwnd, uint attribute, out RECT value, int size);
+    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmFlag(IntPtr hwnd, uint attribute, out int value, int size);
     [DllImport("gdi32.dll")] internal static extern bool DeleteObject(IntPtr obj);
     [DllImport("user32.dll")] internal static extern bool DestroyIcon(IntPtr icon);
-    internal static void Place(Window window, Rectangle bounds)
+    internal static void Place(Window window, Rectangle bounds, bool activate = true)
     {
         var hwnd = new WindowInteropHelper(window).EnsureHandle();
-        SetWindowPos(hwnd, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x0040);
+        SetWindowPos(hwnd, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x0040u | (activate ? 0u : 0x0010u));
     }
-    internal static void ExcludeFromCapture(Window window) => SetWindowDisplayAffinity(new WindowInteropHelper(window).EnsureHandle(), 0x11);
+    internal static bool ExcludeFromCapture(Window window) => SetWindowDisplayAffinity(new WindowInteropHelper(window).EnsureHandle(), 0x11);
+    internal static void MakeClickThrough(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).EnsureHandle();
+        long style = GetWindowLongPtr(hwnd, -20).ToInt64();
+        SetWindowLongPtr(hwnd, -20, new IntPtr(style | 0x20 | 0x08000000)); // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
+    }
+    internal static bool VisibleWindowBounds(IntPtr hwnd, out Rectangle bounds)
+    {
+        bounds = Rectangle.Empty;
+        if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || DwmFlag(hwnd, 14, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return false;
+        if (DwmBounds(hwnd, 9, out var rect, Marshal.SizeOf<RECT>()) != 0 && !GetWindowRect(hwnd, out rect)) return false;
+        bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        return bounds.Width > 40 && bounds.Height > 40;
+    }
+    internal static List<WindowTarget> SnapTargets()
+    {
+        var targets = new List<WindowTarget>();
+        // EnumWindows supplies top-to-bottom Z order; use bounds before overlays open.
+        EnumWindows((hwnd, _) =>
+        {
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == Environment.ProcessId || !VisibleWindowBounds(hwnd, out var bounds)) return true;
+            var title = new StringBuilder(512); GetWindowText(hwnd, title, title.Capacity);
+            if (title.Length > 0) targets.Add(new(hwnd, title.ToString(), bounds));
+            return true;
+        }, IntPtr.Zero);
+        return targets;
+    }
     internal static List<WindowItem> Windows()
     {
         var list = new List<WindowItem>();

@@ -1,15 +1,16 @@
-<Window x:Class="QuickCapture.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Style="{StaticResource {x:Type Window}}" Title="轻截 · QuickCapture" Width="780" Height="750" MinWidth="700" MinHeight="660" WindowStartupLocation="CenterScreen">
+<Window x:Class="QuickCapture.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Style="{StaticResource {x:Type Window}}" Title="轻截 · QuickCapture" Width="780" Height="790" MinWidth="700" MinHeight="660" WindowStartupLocation="CenterScreen">
   <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="30,24,30,24">
       <DockPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"><Button x:Name="ThemeToggle" Content="切换浅色" Click="ThemeToggle_Click" Padding="12,7"/><Border Background="{DynamicResource BadgeBackground}" CornerRadius="6" Padding="12,7"><TextBlock Text="WINDOWS · LOCAL" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="SemiBold"/></Border></StackPanel>
-        <StackPanel><TextBlock Text="轻截" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="截一下，录一段。随手就能用。" Foreground="{DynamicResource TextSecondary}" Margin="0,7,0,0"/></StackPanel>
+        <StackPanel Orientation="Horizontal"><Image Source="{StaticResource ApplicationIcon}" Width="54" Height="54" Margin="0,0,12,0"/><StackPanel><TextBlock Text="轻截" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="截一下，录一段。随手就能用。" Foreground="{DynamicResource TextSecondary}" Margin="0,7,0,0"/></StackPanel></StackPanel>
       </DockPanel>
       <Border Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="20" Margin="0,24,0,12">
         <StackPanel>
           <DockPanel><TextBlock Text="01   截图" FontSize="19" FontWeight="SemiBold"/><TextBlock x:Name="ShotKeyLabel" Text="Ctrl+Alt+S" Foreground="{DynamicResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Center"/></DockPanel>
           <TextBlock Text="框选后原位标注，在选区旁复制或保存。" Foreground="{DynamicResource TextSecondary}" Margin="0,9,0,17"/>
           <StackPanel Orientation="Horizontal"><ComboBox x:Name="ShotMode" SelectedIndex="0" Width="145" Margin="0,0,12,0"><ComboBoxItem Content="框选区域"/><ComboBoxItem Content="选择窗口"/><ComboBoxItem Content="整个桌面"/></ComboBox><Button Content="开始截图" Click="Screenshot_Click" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentForeground}"/><CheckBox x:Name="AutoSaveBox" Content="复制时自动保存" Margin="8,0,0,0" VerticalAlignment="Center"/></StackPanel>
+          <CheckBox x:Name="SnapWindowBox" Content="自动吸附窗口（悬停预选，单击确认；拖动自由框选）" Margin="0,14,0,0"/>
         </StackPanel>
       </Border>
       <Border Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="20" Margin="0,0,0,18">

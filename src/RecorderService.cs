@@ -30,7 +30,10 @@ internal sealed class RecorderService : IDisposable
         if (screen == null) throw new InvalidOperationException("上次区域已不在当前显示器内，请重新选择。区域录屏需位于同一显示器。");
         return new DisplayRecordingSource(screen.DeviceName)
         {
-            RecorderApi = RecorderApi.WindowsGraphicsCapture,
+            // A WGC display session outlines the entire monitor even with a crop.
+            // Desktop Duplication has no system monitor border; RecordingFrame
+            // outlines only the selected region instead.
+            RecorderApi = RecorderApi.DesktopDuplication,
             SourceRect = RelativeCrop(region, screen.Bounds)
         };
     }

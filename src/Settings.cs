@@ -27,6 +27,7 @@ internal sealed class Settings
     public bool Microphone { get; set; } = false;
     public bool Cursor { get; set; } = true;
     public bool AutoSaveScreenshot { get; set; } = true;
+    public bool SnapToWindow { get; set; } = true;
     public bool HardwareEncoding { get; set; } = true;
     public int FramesPerSecond { get; set; } = 30;
     public string Theme { get; set; } = "Dark";

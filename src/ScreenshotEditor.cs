@@ -17,6 +17,11 @@ internal sealed class ScreenshotEditor : IDisposable
     private readonly Action<string> _saved;
     private readonly Action _complete;
     private readonly Dictionary<AnnotationTool, Button> _toolButtons = new();
+    private readonly List<Point> _points = new();
+    private ComboBox? _mosaicMode, _brushSize;
+    private static readonly int[] BrushSizes = { 3, 6, 12, 24, 48 };
+    private int _freehandWidth = 6, _mosaicWidth = 24;
+    internal bool MosaicFreehand => _mosaicMode?.SelectedIndex == 1;
     private Point? _start;
     private string? _lastSave;
     private bool _finishing;
@@ -33,6 +38,7 @@ internal sealed class ScreenshotEditor : IDisposable
         Surface.MouseLeftButtonDown += BeginAnnotation;
         Surface.MouseMove += UpdateAnnotation;
         Surface.MouseLeftButtonUp += EndAnnotation;
+        Surface.LostMouseCapture += (_, _) => { if (_start != null) CancelStroke(); };
         _owner.PreviewKeyDown += KeyDown;
     }
     public WrapPanel CreateToolbar(Action? reselect = null)
@@ -43,8 +49,17 @@ internal sealed class ScreenshotEditor : IDisposable
             var button = Ui.Button(text, action); button.Padding = new Thickness(9, 8, 9, 8);
             button.Margin = new Thickness(0, 2, 4, 2); button.FontSize = 12; panel.Children.Add(button); return button;
         }
-        foreach (var (label, tool) in new[] { ("箭头", AnnotationTool.Arrow), ("矩形", AnnotationTool.Rectangle), ("文字", AnnotationTool.Text), ("马赛克", AnnotationTool.Mosaic) })
+        foreach (var (label, tool) in new[] { ("箭头", AnnotationTool.Arrow), ("矩形", AnnotationTool.Rectangle), ("文字", AnnotationTool.Text), ("涂鸦", AnnotationTool.Freehand), ("马赛克", AnnotationTool.Mosaic) })
             _toolButtons[tool] = Add(label, () => SelectTool(tool));
+        _mosaicMode = new ComboBox { Width = 110, MinWidth = 110, Margin = new Thickness(0, 2, 4, 2), ToolTip = "马赛克模式", ItemsSource = new[] { "框选马赛克", "涂鸦马赛克" }, SelectedIndex = 0 };
+        _mosaicMode.SelectionChanged += (_, _) => UpdateBrushControls(); panel.Children.Add(_mosaicMode);
+        _brushSize = new ComboBox { Width = 74, MinWidth = 74, Margin = new Thickness(0, 2, 4, 2), ToolTip = "画笔粗细（原始像素）", ItemsSource = new[] { "3 px", "6 px", "12 px", "24 px", "48 px" }, SelectedIndex = 1 };
+        _brushSize.SelectionChanged += (_, _) =>
+        {
+            if (_brushSize.SelectedIndex < 0) return;
+            if (Tool == AnnotationTool.Freehand) _freehandWidth = BrushSizes[_brushSize.SelectedIndex];
+            else if (Tool == AnnotationTool.Mosaic && MosaicFreehand) _mosaicWidth = BrushSizes[_brushSize.SelectedIndex];
+        }; panel.Children.Add(_brushSize);
         var colors = new ComboBox { Width = 80, MinWidth = 80, Margin = new Thickness(0, 2, 8, 2), ToolTip = "标注颜色", ItemsSource = new[] { "红色", "绿色", "黄色", "白色", "黑色" }, SelectedIndex = 0 };
         colors.SelectionChanged += (_, _) => _color = new[] { Color.FromRgb(255, 99, 115), Color.FromRgb(130, 226, 187), Colors.Gold, Colors.White, Colors.Black }[colors.SelectedIndex]; panel.Children.Add(colors);
         Add("撤销", Surface.Undo).ToolTip = "Ctrl+Z";
@@ -59,13 +74,29 @@ internal sealed class ScreenshotEditor : IDisposable
     }
     public void SelectTool(AnnotationTool tool)
     {
+        CancelStroke();
         Tool = tool;
         foreach (var (key, button) in _toolButtons)
         {
             button.SetResourceReference(Control.BackgroundProperty, key == tool ? "Accent" : "ButtonBackground");
             button.SetResourceReference(Control.ForegroundProperty, key == tool ? "AccentForeground" : "TextPrimary");
         }
-        ToolChanged?.Invoke();
+        UpdateBrushControls(); ToolChanged?.Invoke();
+    }
+    private void UpdateBrushControls()
+    {
+        if (_mosaicMode != null) _mosaicMode.IsEnabled = Tool == AnnotationTool.Mosaic;
+        if (_brushSize == null) return;
+        _brushSize.IsEnabled = Tool == AnnotationTool.Freehand || Tool == AnnotationTool.Mosaic && MosaicFreehand;
+        _brushSize.SelectedIndex = Array.IndexOf(BrushSizes, Tool == AnnotationTool.Freehand ? _freehandWidth : _mosaicWidth);
+    }
+    private bool IsBrush => Tool == AnnotationTool.Freehand || Tool == AnnotationTool.Mosaic && MosaicFreehand;
+    private Annotation Stroke(Point start, Point end) => new(Tool == AnnotationTool.Mosaic && MosaicFreehand ? AnnotationTool.MosaicBrush : Tool,
+        start, end, _color, Points: IsBrush ? _points.ToArray() : null, Width: IsBrush ? (Tool == AnnotationTool.Freehand ? _freehandWidth : _mosaicWidth) : 3);
+    private void CancelStroke()
+    {
+        _start = null; _points.Clear(); Surface.Preview = null; Surface.InvalidateVisual();
+        if (Surface.IsMouseCaptured) Surface.ReleaseMouseCapture();
     }
     private Point Clamp(Point p) => new(Math.Clamp(p.X, 0, Surface.Width), Math.Clamp(p.Y, 0, Surface.Height));
     private void BeginAnnotation(object sender, MouseButtonEventArgs e)
@@ -78,19 +109,24 @@ internal sealed class ScreenshotEditor : IDisposable
             if (!string.IsNullOrWhiteSpace(text)) Surface.Add(new(Tool, point, point, _color, text));
             return;
         }
-        _start = point; Surface.CaptureMouse();
+        _start = point; _points.Clear(); if (IsBrush) _points.Add(point);
+        Surface.CaptureMouse(); Surface.Preview = Stroke(point, point); Surface.InvalidateVisual();
     }
     private void UpdateAnnotation(object sender, MouseEventArgs e)
     {
         if (_start is not { } start) return;
-        Surface.Preview = new(Tool, start, Clamp(e.GetPosition(Surface)), _color); Surface.InvalidateVisual(); e.Handled = true;
+        var point = Clamp(e.GetPosition(Surface));
+        if (IsBrush && (_points[^1] - point).Length >= 0.75) _points.Add(point);
+        Surface.Preview = Stroke(start, point); Surface.InvalidateVisual(); e.Handled = true;
     }
     private void EndAnnotation(object sender, MouseButtonEventArgs e)
     {
         if (_start is not { } start) return;
-        var end = Clamp(e.GetPosition(Surface)); _start = null; Surface.ReleaseMouseCapture(); e.Handled = true;
-        if ((end - start).Length > 2) Surface.Add(new(Tool, start, end, _color));
+        var end = Clamp(e.GetPosition(Surface)); if (IsBrush && (_points[^1] - end).Length >= 0.75) _points.Add(end);
+        var annotation = Stroke(start, end); _start = null; Surface.ReleaseMouseCapture(); e.Handled = true;
+        if (IsBrush || (end - start).Length > 2) Surface.Add(annotation);
         else { Surface.Preview = null; Surface.InvalidateVisual(); }
+        _points.Clear();
     }
     private async void KeyDown(object sender, KeyEventArgs e)
     {
@@ -99,8 +135,8 @@ internal sealed class ScreenshotEditor : IDisposable
         {
             switch (e.Key)
             {
-                case Key.Z: Surface.Undo(); e.Handled = true; break;
-                case Key.Y: Surface.Redo(); e.Handled = true; break;
+                case Key.Z: CancelStroke(); Surface.Undo(); e.Handled = true; break;
+                case Key.Y: CancelStroke(); Surface.Redo(); e.Handled = true; break;
                 case Key.S: e.Handled = true; SaveAndComplete(); break;
                 case Key.C: e.Handled = true; await CopyAndCompleteAsync(); break;
             }
@@ -137,6 +173,6 @@ internal sealed class ScreenshotEditor : IDisposable
     public void Dispose()
     {
         _owner.PreviewKeyDown -= KeyDown;
-        if (Surface.IsMouseCaptured) Surface.ReleaseMouseCapture();
+        CancelStroke();
     }
 }

@@ -83,6 +83,10 @@ internal static class UiChangeTests
                 Ensure(Math.Abs(end.X - physical.X - region.Width) < 1 && Math.Abs(end.Y - physical.Y - region.Height) < 1, "DPI altered original display size");
                 editor.Surface.Add(new(AnnotationTool.Arrow, new(80, 150), new(330, 90), Colors.OrangeRed));
                 editor.Surface.Add(new(AnnotationTool.Rectangle, new(380, 190), new(720, 340), Colors.OrangeRed));
+                editor.Surface.Add(new(AnnotationTool.Freehand, new(50, 360), new(220, 365), Colors.OrangeRed,
+                    Points: new[] { new Point(50, 360), new Point(90, 345), new Point(130, 365), new Point(170, 345), new Point(220, 365) }, Width: 6));
+                editor.Surface.Add(new(AnnotationTool.MosaicBrush, new(100, 238), new(345, 238), Colors.White,
+                    Points: new[] { new Point(100, 238), new Point(220, 238), new Point(345, 238) }, Width: 26));
                 editor.Surface.Undo(); editor.Surface.Redo();
                 Render(selection, "selection-dark.png");
                 ThemeService.Apply("Light"); selection.UpdateLayout(); Render(selection, "selection-light.png");
@@ -121,6 +125,7 @@ internal static class UiChangeTests
             }
             finally { selection.Close(); ThemeService.Apply("Dark"); }
         });
+        await FeatureTests.RunUiAsync(check);
     }
     internal static void Render(Window window, string name)
     {
@@ -130,7 +135,7 @@ internal static class UiChangeTests
         rendered.Render(window);
         string path = Path.Combine(PreviewDirectory, name); if (File.Exists(path)) File.Delete(path); CaptureService.Save(rendered, path);
     }
-    private static BitmapSource SyntheticDesktop(int width, int height)
+    internal static BitmapSource SyntheticDesktop(int width, int height)
     {
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())

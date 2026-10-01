@@ -7,13 +7,13 @@ using System.Windows.Media.Imaging;
 
 namespace QuickCapture;
 
-internal enum AnnotationTool { Arrow, Rectangle, Text, Mosaic }
-internal sealed record Annotation(AnnotationTool Tool, Point Start, Point End, Color Color, string Text = "");
+internal enum AnnotationTool { Arrow, Rectangle, Text, Mosaic, Freehand, MosaicBrush }
+internal sealed record Annotation(AnnotationTool Tool, Point Start, Point End, Color Color, string Text = "", IReadOnlyList<Point>? Points = null, double Width = 3);
 
 internal sealed class AnnotationSurface : FrameworkElement
 {
     private readonly BitmapSource _image;
-    private readonly byte[] _pixels;
+    private readonly BitmapSource _mosaic;
     private readonly List<Annotation> _items = new();
     private readonly Stack<Annotation> _redo = new();
     public Annotation? Preview { get; set; }
@@ -23,8 +23,21 @@ internal sealed class AnnotationSurface : FrameworkElement
     {
         _image = image; Width = image.PixelWidth; Height = image.PixelHeight;
         var converted = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
-        _pixels = new byte[image.PixelWidth * image.PixelHeight * 4];
-        converted.CopyPixels(_pixels, image.PixelWidth * 4, 0);
+        var pixels = new byte[image.PixelWidth * image.PixelHeight * 4];
+        converted.CopyPixels(pixels, image.PixelWidth * 4, 0);
+        // Cache a pixelated copy once; long brush strokes can then clip it cheaply.
+        var mosaicPixels = new byte[pixels.Length]; int stride = image.PixelWidth * 4;
+        for (int y = 0; y < image.PixelHeight; y += 14)
+            for (int x = 0; x < image.PixelWidth; x += 14)
+            {
+                int right = Math.Min(x + 14, image.PixelWidth), bottom = Math.Min(y + 14, image.PixelHeight), count = (right - x) * (bottom - y);
+                int blue = 0, green = 0, red = 0;
+                for (int py = y; py < bottom; py++) for (int px = x; px < right; px++)
+                { int p = py * stride + px * 4; blue += pixels[p]; green += pixels[p + 1]; red += pixels[p + 2]; }
+                for (int py = y; py < bottom; py++) for (int px = x; px < right; px++)
+                { int p = py * stride + px * 4; mosaicPixels[p] = (byte)(blue / count); mosaicPixels[p + 1] = (byte)(green / count); mosaicPixels[p + 2] = (byte)(red / count); mosaicPixels[p + 3] = 255; }
+            }
+        _mosaic = BitmapSource.Create(image.PixelWidth, image.PixelHeight, 96, 96, PixelFormats.Bgra32, null, mosaicPixels, stride); _mosaic.Freeze();
         ClipToBounds = true; Focusable = true;
     }
     public void Add(Annotation item) { _items.Add(item); _redo.Clear(); Preview = null; InvalidateVisual(); Changed?.Invoke(); }
@@ -39,7 +52,7 @@ internal sealed class AnnotationSurface : FrameworkElement
     }
     private void DrawItem(DrawingContext dc, Annotation a)
     {
-        var brush = new SolidColorBrush(a.Color); var pen = new Pen(brush, 3);
+        var brush = new SolidColorBrush(a.Color); var pen = new Pen(brush, a.Width) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
         var bounds = new Rect(a.Start, a.End);
         switch (a.Tool)
         {
@@ -56,20 +69,27 @@ internal sealed class AnnotationSurface : FrameworkElement
             case AnnotationTool.Text:
                 dc.DrawText(new FormattedText(a.Text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, new Typeface("Microsoft YaHei UI"), 24, brush, 1), a.Start); break;
             case AnnotationTool.Mosaic:
-                int x0 = Math.Max(0, (int)bounds.Left), y0 = Math.Max(0, (int)bounds.Top);
-                int x1 = Math.Min((int)Width, (int)Math.Ceiling(bounds.Right)), y1 = Math.Min((int)Height, (int)Math.Ceiling(bounds.Bottom));
-                for (int y = y0; y < y1; y += 14)
-                    for (int x = x0; x < x1; x += 14)
-                    {
-                        int right = Math.Min(x + 14, x1), bottom = Math.Min(y + 14, y1), count = (right - x) * (bottom - y);
-                        int blue = 0, green = 0, red = 0;
-                        for (int py = y; py < bottom; py++) for (int px = x; px < right; px++)
-                        { int p = (py * (int)Width + px) * 4; blue += _pixels[p]; green += _pixels[p + 1]; red += _pixels[p + 2]; }
-                        dc.DrawRectangle(new SolidColorBrush(Color.FromRgb((byte)(red / count), (byte)(green / count), (byte)(blue / count))), null, new Rect(x, y, right - x, bottom - y));
-                    }
+                DrawMosaic(dc, new RectangleGeometry(bounds)); break;
+            case AnnotationTool.Freehand:
+            case AnnotationTool.MosaicBrush:
+                var points = a.Points;
+                if (points == null || points.Count == 0) return;
+                if (points.Count == 1)
+                {
+                    var dot = new EllipseGeometry(points[0], a.Width / 2, a.Width / 2);
+                    if (a.Tool == AnnotationTool.Freehand) dc.DrawGeometry(brush, null, dot); else DrawMosaic(dc, dot);
+                    break;
+                }
+                var path = new StreamGeometry();
+                using (var c = path.Open()) { c.BeginFigure(points[0], false, false); for (int i = 1; i < points.Count; i++) c.LineTo(points[i], true, false); }
+                path.Freeze();
+                if (a.Tool == AnnotationTool.Freehand) dc.DrawGeometry(null, pen, path);
+                else DrawMosaic(dc, path.GetWidenedPathGeometry(pen));
                 break;
         }
     }
+    private void DrawMosaic(DrawingContext dc, Geometry clip)
+    { dc.PushClip(clip); dc.DrawImage(_mosaic, new Rect(0, 0, Width, Height)); dc.Pop(); }
     public BitmapSource Export()
     {
         var visual = new DrawingVisual();

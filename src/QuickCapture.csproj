@@ -10,10 +10,13 @@
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <AssemblyName>QuickCapture</AssemblyName>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets/app.ico" />
+    <Resource Include="Assets/app.png" />
     <PackageReference Include="ScreenRecorderLib" Version="7.0.1" />
   </ItemGroup>
 </Project>

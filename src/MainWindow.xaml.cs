@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private Forms.NotifyIcon? _tray;
     private Icon? _icon;
     private RecordingBar? _bar;
+    private RecordingFrame? _frame;
     private bool _busy, _exit, _stopBusy;
     private EditorWindow? _editor;
     public MainWindow()
@@ -38,7 +39,7 @@ public partial class MainWindow : Window
         _recorder.Failed += error => Dispatcher.BeginInvoke(() =>
         {
             ErrorLog.Write(new InvalidOperationException(error));
-            _bar?.Close(); _bar = null; _recorder.Dispose(); UpdateRecordingUi();
+            _bar?.Close(); _bar = null; _frame?.Close(); _frame = null; _recorder.Dispose(); UpdateRecordingUi();
             SetStatus(error); Show(); Activate();
         });
         Closing += OnClosing;
@@ -71,6 +72,7 @@ public partial class MainWindow : Window
     private void LoadControls()
     {
         AutoSaveBox.IsChecked = _settings.AutoSaveScreenshot; SystemAudioBox.IsChecked = _settings.SystemAudio;
+        SnapWindowBox.IsChecked = _settings.SnapToWindow;
         MicrophoneBox.IsChecked = _settings.Microphone; CursorBox.IsChecked = _settings.Cursor;
         FpsBox.SelectedIndex = _settings.FramesPerSecond == 15 ? 0 : _settings.FramesPerSecond == 60 ? 2 : 1;
         ShotKeyLabel.Text = _settings.ScreenshotHotkey; RecordKeyLabel.Text = _settings.RecordingHotkey;
@@ -80,18 +82,15 @@ public partial class MainWindow : Window
     private void SaveControls()
     {
         _settings.AutoSaveScreenshot = AutoSaveBox.IsChecked == true;
+        _settings.SnapToWindow = SnapWindowBox.IsChecked == true;
         _settings.SystemAudio = SystemAudioBox.IsChecked == true; _settings.Microphone = MicrophoneBox.IsChecked == true;
         _settings.Cursor = CursorBox.IsChecked == true; _settings.FramesPerSecond = new[] { 15, 30, 60 }[Math.Max(0, FpsBox.SelectedIndex)];
         _settings.Save();
     }
     private void CreateTray()
     {
-        using var bitmap = new Bitmap(32, 32); using (var g = Graphics.FromImage(bitmap))
-        {
-            g.Clear(Color.FromArgb(18, 23, 30)); using var pen = new Pen(Color.FromArgb(130, 226, 187), 3);
-            g.DrawRectangle(pen, 7, 7, 18, 18); g.DrawLine(pen, 16, 3, 16, 11); g.DrawLine(pen, 21, 21, 29, 29);
-        }
-        var handle = bitmap.GetHicon(); _icon = (System.Drawing.Icon)System.Drawing.Icon.FromHandle(handle).Clone(); Native.DestroyIcon(handle);
+        using var resource = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico")).Stream;
+        using var icon = new Icon(resource, 32, 32); _icon = (Icon)icon.Clone();
         _tray = new Forms.NotifyIcon { Icon = _icon, Text = "轻截 · QuickCapture", Visible = true };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("打开轻截", null, (_, _) => ShowMain());
@@ -147,11 +146,12 @@ public partial class MainWindow : Window
         _busy = true;
         try
         {
-            SaveControls(); RecordingSourceBase? source = null;
+            SaveControls(); RecordingSourceBase? source = null; SavedRegion? recordingRegion = null;
             if (repeat)
             {
                 if (_settings.LastRegion == null) return;
                 source = RecorderService.RegionSource(_settings.LastRegion);
+                recordingRegion = _settings.LastRegion;
             }
             else if (RecordMode.SelectedIndex == 1)
             {
@@ -169,14 +169,16 @@ public partial class MainWindow : Window
             {
                 var region = await SelectionWindow.SelectAsync(true); if (region == null) return;
                 source = RecorderService.RegionSource(region.Region); _settings.LastRegion = region.Region; _settings.Save();
+                recordingRegion = region.Region;
                 await Task.Delay(120);
             }
             _bar = new RecordingBar(_settings.RecordingHotkey, async () => await StopAsync()); _bar.Show();
+            if (recordingRegion != null) { _frame = new RecordingFrame(recordingRegion); _frame.Show(); }
             UpdateRecordingUi();
             await _recorder.StartAsync(source, _settings, Paths.NewCapture(_settings.OutputDirectory, "mp4")).WaitAsync(TimeSpan.FromSeconds(20));
             UpdateRecordingUi();
         }
-        catch (Exception ex) { _bar?.Close(); _bar = null; _recorder.Dispose(); ShowMain(); Ui.Error(this, ex); }
+        catch (Exception ex) { _bar?.Close(); _bar = null; _frame?.Close(); _frame = null; _recorder.Dispose(); ShowMain(); Ui.Error(this, ex); }
         finally { _busy = false; UpdateRecordingUi(); if (!_recorder.IsBusy) ShowMain(); }
     }
     private async Task StopAsync()
@@ -191,7 +193,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { Ui.Error(this, ex); }
         finally
         {
-            _recorder.Dispose(); _bar?.Close(); _bar = null; _stopBusy = false;
+            _recorder.Dispose(); _bar?.Close(); _bar = null; _frame?.Close(); _frame = null; _stopBusy = false;
             UpdateRecordingUi(); if (!_exit) ShowMain();
         }
     }
