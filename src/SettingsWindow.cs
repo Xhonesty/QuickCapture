@@ -10,16 +10,28 @@ internal sealed class SettingsWindow : Window
     public SettingsWindow(Window owner, Settings settings, HotkeyService hotkeys)
     {
         Ui.Theme(this);
-        Owner = owner; Title = "轻截 · 设置"; Width = 580; Height = 600; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new StackPanel { Margin = new Thickness(24) }; Content = root;
+        Owner = owner; Title = "轻截 · 设置"; Width = 580; Height = 640; MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 40); ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        var root = new StackPanel { Margin = new Thickness(24) }; Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         var folder = Field(root, "保存目录", settings.OutputDirectory);
         var browse = Ui.Button("选择文件夹", () =>
         {
             var picker = new Microsoft.Win32.OpenFolderDialog { Title = "选择截图和视频保存目录", InitialDirectory = Directory.Exists(folder.Text) ? folder.Text : AppContext.BaseDirectory };
             if (picker.ShowDialog(this) == true) folder.Text = picker.FolderName;
         }); browse.Margin = new Thickness(0, 8, 0, 14); browse.HorizontalAlignment = HorizontalAlignment.Left; root.Children.Add(browse);
-        var shot = Field(root, "截图快捷键", settings.ScreenshotHotkey);
-        var record = Field(root, "录屏开始 / 停止快捷键", settings.RecordingHotkey);
+        var shot = HotkeyField(root, "截图快捷键", settings.ScreenshotHotkey, "ScreenshotHotkey");
+        var record = HotkeyField(root, "录屏开始 / 停止快捷键", settings.RecordingHotkey, "RecordingHotkey");
+        var hint = new TextBlock { Text = HotkeyCaptureBox.Instructions, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 8, 0, 0), MinHeight = 34 };
+        hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary"); root.Children.Add(hint);
+        shot.HintChanged += text => hint.Text = text;
+        record.HintChanged += text => hint.Text = text;
+        IDisposable? capture = null;
+        Loaded += (_, _) => capture = hotkeys.BeginCapture((key, modifiers) =>
+        {
+            if (!IsActive) return;
+            if (shot.IsKeyboardFocused) shot.CaptureKey(key, modifiers);
+            else if (record.IsKeyboardFocused) record.CaptureKey(key, modifiers);
+        });
+        Closed += (_, _) => capture?.Dispose();
         root.Children.Add(new TextBlock { Text = "界面风格", Margin = new Thickness(0, 12, 0, 6) });
         var theme = new ComboBox { ItemsSource = new[] { "深色", "浅色" }, SelectedIndex = settings.Theme == "Light" ? 1 : 0 }; root.Children.Add(theme);
         var snap = new CheckBox { Content = "截图时自动吸附窗口（仍可拖动自由框选）", IsChecked = settings.SnapToWindow, Margin = new Thickness(0, 14, 0, 0) }; root.Children.Add(snap);
@@ -58,5 +70,10 @@ internal sealed class SettingsWindow : Window
     {
         root.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 5, 0, 5) });
         var field = new TextBox { Text = value }; root.Children.Add(field); return field;
+    }
+    private static HotkeyCaptureBox HotkeyField(Panel root, string label, string value, string name)
+    {
+        root.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 5, 0, 5) });
+        var field = new HotkeyCaptureBox(value, label) { Name = name }; root.Children.Add(field); return field;
     }
 }

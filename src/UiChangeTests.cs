@@ -126,6 +126,7 @@ internal static class UiChangeTests
             finally { selection.Close(); ThemeService.Apply("Dark"); }
         });
         await FeatureTests.RunUiAsync(check);
+        await HotkeyCaptureTests.RunUiAsync(check);
     }
     internal static void Render(Window window, string name)
         => RenderElement(window, name);
