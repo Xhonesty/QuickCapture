@@ -1,0 +1,26 @@
+.tools/
+src/bin/
+src/obj/
+dist/
+artifacts/
+**/Captures/
+**/Data/
+**/Diagnostics/
+docs/build/
+
+# Downloaded reference material; upstream licensing is in THIRD-PARTY-NOTICES.txt.
+docs/Options.h
+docs/RecordingSources.h
+docs/WindowsGraphicsCapture.cpp
+docs/upstream.md
+docs/upstream-license.txt
+tools/dotnet-install.ps1
+
+# IDE state and local overrides.
+.vs/
+*.user
+*.suo
+*.log
+.env
+.env.*
+!.env.example
