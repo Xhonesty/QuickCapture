@@ -15,30 +15,52 @@ namespace QuickCapture;
 internal sealed class SelectionWindow : Window
 {
     private readonly Canvas _canvas = new();
-    private readonly Rectangle _selection = new() { Stroke = new SolidColorBrush(Color.FromRgb(130, 226, 187)), StrokeThickness = 2, Fill = new SolidColorBrush(Color.FromArgb(25, 130, 226, 187)) };
-    private readonly TextBlock _size = new() { Background = new SolidColorBrush(Color.FromRgb(18, 23, 30)), Padding = new Thickness(8, 4, 8, 4) };
+    private readonly Rectangle _selection = new() { StrokeThickness = 2, IsHitTestVisible = false, Visibility = Visibility.Hidden };
+    private readonly TextBlock _size = new() { Padding = new Thickness(8, 4, 8, 4), IsHitTestVisible = false, Visibility = Visibility.Hidden };
+    private readonly SelectionMask _mask = new();
+    private readonly Border _tip;
     private readonly Forms.Screen _screen;
+    private readonly BitmapSource _image;
+    private readonly bool _recording;
+    private readonly Settings? _settings;
+    private readonly Action<string>? _saved;
     private readonly Action<SelectionResult?> _finish;
+    private readonly Action<SelectionWindow, bool>? _modeChanged;
     private Point? _start;
-    public SelectionWindow(Forms.Screen screen, BitmapSource image, bool recording, Action<SelectionResult?> finish)
+    private Border? _toolbar;
+    private bool _locked, _closed;
+    internal ScreenshotEditor? Editor { get; private set; }
+    internal Rect SelectionBounds { get; private set; }
+    internal Rect ToolbarBounds { get; private set; }
+
+    public SelectionWindow(Forms.Screen screen, BitmapSource image, bool recording, Action<SelectionResult?> finish,
+        Settings? settings = null, Action<string>? saved = null, Action<SelectionWindow, bool>? modeChanged = null)
     {
         Ui.Theme(this);
-        _screen = screen; _finish = finish;
+        _screen = screen; _image = image; _recording = recording; _finish = finish;
+        _settings = settings; _saved = saved; _modeChanged = modeChanged;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true;
         Cursor = Cursors.Cross; Width = screen.Bounds.Width; Height = screen.Bounds.Height;
         var root = new Grid();
         root.Children.Add(new Image { Source = image, Stretch = Stretch.Fill });
-        root.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(115, 0, 0, 0)) });
-        root.Children.Add(_canvas);
-        var tip = new Border { Background = new SolidColorBrush(Color.FromRgb(18, 23, 30)), CornerRadius = new CornerRadius(8), Padding = new Thickness(20, 12, 20, 12), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 28, 0, 0), IsHitTestVisible = false };
-        tip.Child = new TextBlock { Text = recording ? "拖动选择录屏区域 · 松开开始 · Esc 取消" : "拖动选择截图区域 · 松开进入标注 · Esc 取消", FontSize = 15 };
-        root.Children.Add(tip); Content = root;
+        root.Children.Add(_mask); root.Children.Add(_canvas);
+        _selection.SetResourceReference(Shape.StrokeProperty, "SelectionBrush");
+        _size.SetResourceReference(TextBlock.BackgroundProperty, "PanelBackground");
+        _size.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+        _canvas.Children.Add(_selection); _canvas.Children.Add(_size);
+        _tip = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(20, 12, 20, 12), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 28, 0, 0), IsHitTestVisible = false };
+        _tip.SetResourceReference(Border.BackgroundProperty, "PanelBackground");
+        _tip.Child = new TextBlock { Text = recording ? "拖动选择录屏区域 · 松开开始 · Esc 取消" : "拖动框选 · 原位标注 · Enter 复制 · Esc 取消", FontSize = 15 };
+        root.Children.Add(_tip); Content = root;
         Loaded += (_, _) => { Native.Place(this, screen.Bounds); Activate(); Focus(); };
+        SizeChanged += (_, _) => PositionToolbar();
+        Closed += (_, _) => { _closed = true; Editor?.Dispose(); _finish(null); };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { _finish(null); e.Handled = true; } };
         MouseLeftButtonDown += (_, e) =>
         {
+            if (_locked || Editor != null) return;
             _start = e.GetPosition(_canvas); CaptureMouse();
-            if (!_canvas.Children.Contains(_selection)) { _canvas.Children.Add(_selection); _canvas.Children.Add(_size); }
+            _selection.Visibility = _size.Visibility = Visibility.Visible;
             Update(e.GetPosition(_canvas));
         };
         MouseMove += (_, e) => { if (_start != null) Update(e.GetPosition(_canvas)); };
@@ -46,13 +68,15 @@ internal sealed class SelectionWindow : Window
         {
             if (_start is not { } start) return;
             ReleaseMouseCapture(); _start = null;
-            var end = e.GetPosition(_canvas);
-            var region = RegionFromPoints(start, end);
-            var rect = region.Rectangle;
-            if (rect.Width < 4 || rect.Height < 4) return;
-            var crop = new CroppedBitmap(image, new Int32Rect(rect.X - screen.Bounds.X, rect.Y - screen.Bounds.Y, rect.Width, rect.Height)); crop.Freeze();
-            _finish(new(region, crop));
+            var region = RegionFromPoints(start, e.GetPosition(_canvas));
+            if (region.Width < 4 || region.Height < 4) return;
+            if (_recording || _settings == null) _finish(new(region, Crop(region)));
+            else BeginEditing(region);
         };
+    }
+    private BitmapSource Crop(SavedRegion region)
+    {
+        var crop = new CroppedBitmap(_image, new Int32Rect(region.X - _screen.Bounds.X, region.Y - _screen.Bounds.Y, region.Width, region.Height)); crop.Freeze(); return crop;
     }
     internal SavedRegion RegionFromPoints(Point start, Point end)
     {
@@ -66,13 +90,65 @@ internal sealed class SelectionWindow : Window
     {
         if (_start is not { } start) return;
         end = new Point(Math.Clamp(end.X, 0, ActualWidth), Math.Clamp(end.Y, 0, ActualHeight));
-        double x = Math.Min(start.X, end.X), y = Math.Min(start.Y, end.Y), w = Math.Abs(start.X - end.X), h = Math.Abs(start.Y - end.Y);
-        Canvas.SetLeft(_selection, x); Canvas.SetTop(_selection, y); _selection.Width = w; _selection.Height = h;
-        var scale = VisualTreeHelper.GetDpi(this);
-        _size.Text = $"{Math.Round(w * scale.DpiScaleX)} × {Math.Round(h * scale.DpiScaleY)} px";
-        Canvas.SetLeft(_size, Math.Max(0, Math.Min(x, ActualWidth - 170))); Canvas.SetTop(_size, Math.Max(0, y - 32));
+        var bounds = new Rect(start, end); SetSelection(bounds);
+        var dpi = VisualTreeHelper.GetDpi(this);
+        _size.Text = $"{Math.Round(bounds.Width * dpi.DpiScaleX)} × {Math.Round(bounds.Height * dpi.DpiScaleY)} px";
     }
-    public static async Task<SelectionResult?> SelectAsync(bool recording)
+    private void SetSelection(Rect bounds)
+    {
+        SelectionBounds = bounds; _mask.Selection = bounds;
+        _selection.Visibility = _size.Visibility = Visibility.Visible;
+        Canvas.SetLeft(_selection, bounds.Left); Canvas.SetTop(_selection, bounds.Top); _selection.Width = bounds.Width; _selection.Height = bounds.Height;
+        Canvas.SetLeft(_size, Math.Clamp(bounds.Left, 0, Math.Max(0, ActualWidth - 170)));
+        Canvas.SetTop(_size, bounds.Top >= 32 ? bounds.Top - 32 : bounds.Top + 4);
+    }
+    internal void BeginEditing(SavedRegion region)
+    {
+        if (region.DeviceName != _screen.DeviceName || !_screen.Bounds.Contains(region.Rectangle) || region.Width < 4 || region.Height < 4)
+            throw new ArgumentException("截图区域不在此显示器内。");
+        RemoveEditor();
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var origin = PointFromScreen(new Point(region.X, region.Y));
+        SetSelection(new Rect(origin, new Size(region.Width / dpi.DpiScaleX, region.Height / dpi.DpiScaleY)));
+        _size.Text = $"{region.Width} × {region.Height} px";
+        _tip.Visibility = Visibility.Collapsed; Cursor = Cursors.Arrow;
+        Editor = new ScreenshotEditor(this, Crop(region), _settings ?? new Settings(), _saved ?? (_ => { }), () => _finish(null));
+        // WPF uses DIPs, annotations use source pixels: cancel the monitor scale
+        // so the selected image remains at exactly its original screen location.
+        Editor.Surface.LayoutTransform = new ScaleTransform(1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY);
+        Canvas.SetLeft(Editor.Surface, origin.X); Canvas.SetTop(Editor.Surface, origin.Y);
+        _canvas.Children.Insert(0, Editor.Surface);
+        _toolbar = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 5, 4, 5), BorderThickness = new Thickness(1), Child = Editor.CreateToolbar(Reselect), Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 3, Opacity = 0.25 } };
+        _toolbar.SetResourceReference(Border.BackgroundProperty, "PanelBackground"); _toolbar.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        _canvas.Children.Add(_toolbar); PositionToolbar();
+        Editor.Surface.Focus(); _modeChanged?.Invoke(this, true);
+    }
+    private void PositionToolbar()
+    {
+        if (_toolbar == null || ActualWidth <= 0) return;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var work = _screen.WorkingArea;
+        var available = new Rect((work.X - _screen.Bounds.X) / dpi.DpiScaleX + 8, (work.Y - _screen.Bounds.Y) / dpi.DpiScaleY + 8,
+            Math.Max(1, work.Width / dpi.DpiScaleX - 16), Math.Max(1, work.Height / dpi.DpiScaleY - 16));
+        _toolbar.MaxWidth = Math.Min(930, available.Width);
+        _toolbar.Measure(new Size(_toolbar.MaxWidth, double.PositiveInfinity));
+        var size = _toolbar.DesiredSize;
+        var point = ToolbarPlacement.Place(SelectionBounds, size, available);
+        Canvas.SetLeft(_toolbar, point.X); Canvas.SetTop(_toolbar, point.Y); ToolbarBounds = new(point, size);
+    }
+    private void RemoveEditor()
+    {
+        if (Editor != null) { Editor.Dispose(); _canvas.Children.Remove(Editor.Surface); Editor = null; }
+        if (_toolbar != null) { _canvas.Children.Remove(_toolbar); _toolbar = null; }
+    }
+    internal void Reselect()
+    {
+        RemoveEditor(); _mask.Selection = null; _selection.Visibility = _size.Visibility = Visibility.Hidden;
+        _tip.Visibility = Visibility.Visible; Cursor = Cursors.Cross; _modeChanged?.Invoke(this, false); Activate(); Focus();
+    }
+    public static Task<SelectionResult?> SelectAsync(bool recording) => OpenAsync(recording, null, null);
+    public static async Task EditScreenshotAsync(Settings settings, Action<string> saved) => await OpenAsync(false, settings, saved);
+    private static async Task<SelectionResult?> OpenAsync(bool recording, Settings? settings, Action<string>? saved)
     {
         var task = new TaskCompletionSource<SelectionResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var screens = Forms.Screen.AllScreens;
@@ -82,15 +158,44 @@ internal sealed class SelectionWindow : Window
         void Finish(SelectionResult? result)
         {
             if (finished) return; finished = true;
-            foreach (var window in windows) window.Close();
+            foreach (var window in windows) if (!window._closed) window.Close();
             task.TrySetResult(result);
         }
-        for (int i = 0; i < screens.Length; i++)
+        void ModeChanged(SelectionWindow active, bool editing)
         {
-            var window = new SelectionWindow(screens[i], images[i], recording, Finish);
-            windows.Add(window); window.Show();
+            foreach (var window in windows)
+            {
+                if (window == active || window._closed) continue;
+                window._locked = editing;
+                if (editing) window.Hide(); else window.Show();
+            }
+            active.Activate(); active.Focus();
         }
-        return await task.Task;
+        try
+        {
+            for (int i = 0; i < screens.Length; i++)
+            {
+                var window = new SelectionWindow(screens[i], images[i], recording, Finish, settings, saved, ModeChanged);
+                windows.Add(window); window.Show();
+            }
+            return await task.Task;
+        }
+        finally { finished = true; foreach (var window in windows) if (!window._closed) window.Close(); }
+    }
+}
+
+internal sealed class SelectionMask : FrameworkElement
+{
+    private Rect? _selection;
+    private readonly Brush _shade = new SolidColorBrush(Color.FromArgb(115, 0, 0, 0));
+    public Rect? Selection { get => _selection; set { _selection = value; InvalidateVisual(); } }
+    public SelectionMask() { IsHitTestVisible = false; }
+    protected override void OnRender(DrawingContext dc)
+    {
+        var whole = new Rect(0, 0, ActualWidth, ActualHeight);
+        if (_selection is not { } selection) { dc.DrawRectangle(_shade, null, whole); return; }
+        var visible = Geometry.Combine(new RectangleGeometry(whole), new RectangleGeometry(selection), GeometryCombineMode.Exclude, null);
+        dc.DrawGeometry(_shade, null, visible);
     }
 }
 

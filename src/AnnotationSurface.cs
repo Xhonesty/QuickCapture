@@ -18,6 +18,7 @@ internal sealed class AnnotationSurface : FrameworkElement
     private readonly Stack<Annotation> _redo = new();
     public Annotation? Preview { get; set; }
     public int Count => _items.Count;
+    public event Action? Changed;
     public AnnotationSurface(BitmapSource image)
     {
         _image = image; Width = image.PixelWidth; Height = image.PixelHeight;
@@ -26,9 +27,9 @@ internal sealed class AnnotationSurface : FrameworkElement
         converted.CopyPixels(_pixels, image.PixelWidth * 4, 0);
         ClipToBounds = true; Focusable = true;
     }
-    public void Add(Annotation item) { _items.Add(item); _redo.Clear(); Preview = null; InvalidateVisual(); }
-    public void Undo() { if (_items.Count > 0) { _redo.Push(_items[^1]); _items.RemoveAt(_items.Count - 1); InvalidateVisual(); } }
-    public void Redo() { if (_redo.TryPop(out var item)) { _items.Add(item); InvalidateVisual(); } }
+    public void Add(Annotation item) { _items.Add(item); _redo.Clear(); Preview = null; InvalidateVisual(); Changed?.Invoke(); }
+    public void Undo() { if (_items.Count > 0) { _redo.Push(_items[^1]); _items.RemoveAt(_items.Count - 1); InvalidateVisual(); Changed?.Invoke(); } }
+    public void Redo() { if (_redo.TryPop(out var item)) { _items.Add(item); InvalidateVisual(); Changed?.Invoke(); } }
     protected override void OnRender(DrawingContext dc) { base.OnRender(dc); Draw(dc, true); }
     private void Draw(DrawingContext dc, bool preview)
     {

@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private EditorWindow? _editor;
     public MainWindow()
     {
+        ThemeService.Apply(_settings.Theme);
         InitializeComponent();
         SourceInitialized += (_, _) =>
         {
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
         FpsBox.SelectedIndex = _settings.FramesPerSecond == 15 ? 0 : _settings.FramesPerSecond == 60 ? 2 : 1;
         ShotKeyLabel.Text = _settings.ScreenshotHotkey; RecordKeyLabel.Text = _settings.RecordingHotkey;
         RepeatButton.IsEnabled = _settings.LastRegion != null;
+        ThemeToggle.Content = _settings.Theme == "Light" ? "切换深色" : "切换浅色";
     }
     private void SaveControls()
     {
@@ -127,8 +129,8 @@ public partial class MainWindow : Window
                 if (ShotMode.SelectedIndex == 2) image = await CaptureService.CaptureAsync(Forms.SystemInformation.VirtualScreen);
                 else
                 {
-                    var region = await SelectionWindow.SelectAsync(false); if (region == null) return;
-                    image = region.Image;
+                    await SelectionWindow.EditScreenshotAsync(_settings, Saved);
+                    return;
                 }
             }
             _editor = new EditorWindow(image, _settings, Saved);
@@ -228,6 +230,17 @@ public partial class MainWindow : Window
     private async void Recording_Click(object sender, RoutedEventArgs e) => await ToggleRecordingAsync();
     private async void Repeat_Click(object sender, RoutedEventArgs e) => await ToggleRecordingAsync(true);
     private void Folder_Click(object sender, RoutedEventArgs e) => OpenFolder();
+    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        string previous = _settings.Theme;
+        try
+        {
+            _settings.Theme = previous == "Light" ? "Dark" : "Light";
+            _settings.Save(); ThemeService.Apply(_settings.Theme);
+            ThemeToggle.Content = _settings.Theme == "Light" ? "切换深色" : "切换浅色";
+        }
+        catch (Exception ex) { _settings.Theme = previous; Ui.Error(this, ex); }
+    }
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         if (_recorder.IsBusy || _busy) { SetStatus("请先停止录屏。"); return; }

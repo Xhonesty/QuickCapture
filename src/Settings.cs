@@ -29,6 +29,7 @@ internal sealed class Settings
     public bool AutoSaveScreenshot { get; set; } = true;
     public bool HardwareEncoding { get; set; } = true;
     public int FramesPerSecond { get; set; } = 30;
+    public string Theme { get; set; } = "Dark";
     public SavedRegion? LastRegion { get; set; }
     public static Settings Load()
     {
@@ -37,6 +38,7 @@ internal sealed class Settings
             var s = File.Exists(Paths.SettingsFile) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(Paths.SettingsFile)) ?? new() : new();
             if (string.IsNullOrWhiteSpace(s.OutputDirectory)) s.OutputDirectory = Paths.DefaultOutput;
             if (s.FramesPerSecond is not (15 or 30 or 60)) s.FramesPerSecond = 30;
+            if (s.Theme is not ("Light" or "Dark")) s.Theme = "Dark";
             HotkeyService.Parse(s.ScreenshotHotkey); HotkeyService.Parse(s.RecordingHotkey);
             if (s.ScreenshotHotkey.Equals(s.RecordingHotkey, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("快捷键重复");
             return s;

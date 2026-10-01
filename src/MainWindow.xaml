@@ -2,27 +2,27 @@
   <ScrollViewer VerticalScrollBarVisibility="Auto">
     <StackPanel Margin="30,24,30,24">
       <DockPanel>
-        <Border DockPanel.Dock="Right" Background="#20372E" CornerRadius="6" Padding="12,5" VerticalAlignment="Top"><TextBlock Text="WINDOWS · LOCAL" Foreground="#82E2BB" FontSize="10" FontWeight="SemiBold"/></Border>
-        <StackPanel><TextBlock Text="轻截" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="截一下，录一段。随手就能用。" Foreground="#9CADBF" Margin="0,7,0,0"/></StackPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top"><Button x:Name="ThemeToggle" Content="切换浅色" Click="ThemeToggle_Click" Padding="12,7"/><Border Background="{DynamicResource BadgeBackground}" CornerRadius="6" Padding="12,7"><TextBlock Text="WINDOWS · LOCAL" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="SemiBold"/></Border></StackPanel>
+        <StackPanel><TextBlock Text="轻截" FontSize="30" FontWeight="SemiBold"/><TextBlock Text="截一下，录一段。随手就能用。" Foreground="{DynamicResource TextSecondary}" Margin="0,7,0,0"/></StackPanel>
       </DockPanel>
-      <Border Background="#1B2430" CornerRadius="12" Padding="20" Margin="0,24,0,12">
+      <Border Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="20" Margin="0,24,0,12">
         <StackPanel>
-          <DockPanel><TextBlock Text="01   截图" FontSize="19" FontWeight="SemiBold"/><TextBlock x:Name="ShotKeyLabel" Text="Ctrl+Alt+S" Foreground="#82E2BB" HorizontalAlignment="Right" VerticalAlignment="Center"/></DockPanel>
-          <TextBlock Text="框选、标注、复制。原始像素清晰保存。" Foreground="#9CADBF" Margin="0,9,0,17"/>
-          <StackPanel Orientation="Horizontal"><ComboBox x:Name="ShotMode" SelectedIndex="0" Width="145" Margin="0,0,12,0"><ComboBoxItem Content="框选区域"/><ComboBoxItem Content="选择窗口"/><ComboBoxItem Content="整个桌面"/></ComboBox><Button Content="开始截图" Click="Screenshot_Click" Background="#82E2BB" Foreground="#11251C"/><CheckBox x:Name="AutoSaveBox" Content="复制时自动保存" Margin="8,0,0,0" VerticalAlignment="Center"/></StackPanel>
+          <DockPanel><TextBlock Text="01   截图" FontSize="19" FontWeight="SemiBold"/><TextBlock x:Name="ShotKeyLabel" Text="Ctrl+Alt+S" Foreground="{DynamicResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Center"/></DockPanel>
+          <TextBlock Text="框选后原位标注，在选区旁复制或保存。" Foreground="{DynamicResource TextSecondary}" Margin="0,9,0,17"/>
+          <StackPanel Orientation="Horizontal"><ComboBox x:Name="ShotMode" SelectedIndex="0" Width="145" Margin="0,0,12,0"><ComboBoxItem Content="框选区域"/><ComboBoxItem Content="选择窗口"/><ComboBoxItem Content="整个桌面"/></ComboBox><Button Content="开始截图" Click="Screenshot_Click" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentForeground}"/><CheckBox x:Name="AutoSaveBox" Content="复制时自动保存" Margin="8,0,0,0" VerticalAlignment="Center"/></StackPanel>
         </StackPanel>
       </Border>
-      <Border Background="#1B2430" CornerRadius="12" Padding="20" Margin="0,0,0,18">
+      <Border Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="20" Margin="0,0,0,18">
         <StackPanel>
-          <DockPanel><TextBlock Text="02   录屏" FontSize="19" FontWeight="SemiBold"/><TextBlock x:Name="RecordKeyLabel" Text="Ctrl+Alt+R" Foreground="#82E2BB" HorizontalAlignment="Right" VerticalAlignment="Center"/></DockPanel>
-          <TextBlock Text="选择区域或窗口，再按快捷键即可停止并保存。" Foreground="#9CADBF" Margin="0,9,0,17"/>
+          <DockPanel><TextBlock Text="02   录屏" FontSize="19" FontWeight="SemiBold"/><TextBlock x:Name="RecordKeyLabel" Text="Ctrl+Alt+R" Foreground="{DynamicResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Center"/></DockPanel>
+          <TextBlock Text="选择区域或窗口，再按快捷键即可停止并保存。" Foreground="{DynamicResource TextSecondary}" Margin="0,9,0,17"/>
           <StackPanel Orientation="Horizontal"><ComboBox x:Name="RecordMode" SelectedIndex="0" Width="145" Margin="0,0,12,0"><ComboBoxItem Content="框选区域"/><ComboBoxItem Content="选择窗口"/><ComboBoxItem Content="鼠标所在屏幕"/></ComboBox><Button x:Name="RecordButton" Content="开始录屏" Click="Recording_Click"/><Button x:Name="RepeatButton" Content="重复上次区域" Click="Repeat_Click"/></StackPanel>
           <StackPanel Orientation="Horizontal" Margin="0,18,0,0"><CheckBox x:Name="SystemAudioBox" Content="系统声音"/><CheckBox x:Name="MicrophoneBox" Content="麦克风"/><CheckBox x:Name="CursorBox" Content="显示鼠标"/><ComboBox x:Name="FpsBox" MinWidth="100" Width="100" SelectedIndex="1"><ComboBoxItem Content="15 FPS"/><ComboBoxItem Content="30 FPS"/><ComboBoxItem Content="60 FPS"/></ComboBox></StackPanel>
         </StackPanel>
       </Border>
       <DockPanel Margin="0,0,0,12"><StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button Content="打开保存目录" Click="Folder_Click" Padding="12,7"/><Button Content="设置" Click="Settings_Click" Padding="12,7" Margin="0"/></StackPanel><TextBlock Text="最近保存" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/></DockPanel>
-      <ListBox x:Name="RecentList" Height="120" Background="#171F29" BorderThickness="0" Foreground="#D5DFEA" MouseDoubleClick="Recent_DoubleClick" Padding="8" ScrollViewer.HorizontalScrollBarVisibility="Disabled"><ListBox.ItemTemplate><DataTemplate><StackPanel Margin="6,5"><TextBlock Text="{Binding Name}" Foreground="#E7EDF4" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="#91A6BB" FontSize="11" Margin="0,3,0,0"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
-      <TextBlock x:Name="StatusText" Text="就绪 · 关闭窗口后驻留托盘 · 双击最近文件打开预览" Foreground="#9CADBF" Margin="0,16,0,0" TextWrapping="Wrap"/>
+      <ListBox x:Name="RecentList" Height="120" BorderThickness="0" MouseDoubleClick="Recent_DoubleClick" Padding="8" ScrollViewer.HorizontalScrollBarVisibility="Disabled"><ListBox.ItemTemplate><DataTemplate><StackPanel Margin="6,5"><TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Detail}" Foreground="{DynamicResource TextSecondary}" FontSize="11" Margin="0,3,0,0"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
+      <TextBlock x:Name="StatusText" Text="就绪 · 关闭窗口后驻留托盘 · 双击最近文件打开预览" Foreground="{DynamicResource TextSecondary}" Margin="0,16,0,0" TextWrapping="Wrap"/>
     </StackPanel>
   </ScrollViewer>
 </Window>

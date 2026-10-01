@@ -27,6 +27,13 @@ internal static class SelfTest
             catch (Exception ex) { failures++; results.Add(new { name, passed = false, error = ex.ToString() }); }
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
+        Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
+        if (Array.IndexOf(args, "--ui-only") >= 0)
+        {
+            await UiChangeTests.RunAsync(Check);
+            File.WriteAllText(Path.Combine(directory, "summary.txt"), $"UI failures: {failures}\nCompleted: {DateTime.Now:O}\n");
+            return failures == 0 ? 0 : 1;
+        }
         await Check("Hotkey parsing and conflict rollback", () =>
         {
             Ensure(HotkeyService.Parse("Ctrl+Alt+S") == (0x4003u, 0x53u), "Wrong hotkey mapping");
@@ -154,9 +161,10 @@ internal static class SelfTest
             void RenderWindow(Window window, string filename)
             {
                 var rendered = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32); rendered.Render(window);
-                string path = Path.Combine(directory, filename); if (File.Exists(path)) File.Delete(path); CaptureService.Save(rendered, path);
+                string path = Path.Combine(UiChangeTests.PreviewDirectory, filename); if (File.Exists(path)) File.Delete(path); CaptureService.Save(rendered, path);
             }
         });
+        await UiChangeTests.RunAsync(Check);
         File.WriteAllText(Path.Combine(directory, "summary.txt"), $"Failures: {failures}\nCompleted: {DateTime.Now:O}\nSee results.json and rendered artifacts.\n");
         return failures == 0 ? 0 : 1;
     }
