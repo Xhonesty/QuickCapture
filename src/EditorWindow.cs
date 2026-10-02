@@ -21,13 +21,24 @@ internal sealed class EditorWindow : Window
         var root = new DockPanel(); Content = root;
         var toolbar = editor.CreateToolbar(); toolbar.Margin = new Thickness(12); DockPanel.SetDock(toolbar, Dock.Top); root.Children.Add(toolbar);
         var bottom = new DockPanel(); DockPanel.SetDock(bottom, Dock.Bottom); root.Children.Add(bottom);
-        var hint = new TextBlock { Margin = new Thickness(16, 10, 16, 10), Text = "Ctrl+Z 撤销 · Ctrl+S 保存 · Enter 复制 · Esc 取消" };
+        var hint = new TextBlock { Margin = new Thickness(16, 8, 16, 8), FontSize = UiDesign.Number("FontHelp"), Text = "C 裁剪 · 方向键 1px / Shift 10px · Ctrl+Z 撤销 · Enter 复制 · Esc 取消", TextWrapping = TextWrapping.Wrap };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         var zoom = new Slider { Minimum = 0.25, Maximum = 2, Value = Math.Min(1, Math.Min((Width - 50) / image.PixelWidth, (Height - 160) / image.PixelHeight)), Width = 140, Margin = new Thickness(12), ToolTip = "缩放预览（导出保持原始像素）" };
         DockPanel.SetDock(zoom, Dock.Right); bottom.Children.Add(zoom); bottom.Children.Add(hint);
-        var scale = new ScaleTransform(zoom.Value, zoom.Value); editor.Surface.LayoutTransform = scale;
+        var viewport = new Canvas { Width = image.PixelWidth, Height = image.PixelHeight };
+        viewport.Children.Add(new Image { Source = image, Width = image.PixelWidth, Height = image.PixelHeight, Stretch = Stretch.Fill });
+        var mask = new SelectionMask { Width = image.PixelWidth, Height = image.PixelHeight }; viewport.Children.Add(mask);
+        viewport.Children.Add(editor.Surface); viewport.Children.Add(editor.Handles);
+        void Position()
+        {
+            var crop = editor.Surface.CropBounds; mask.Selection = new Rect(crop.X, crop.Y, crop.Width, crop.Height);
+            Canvas.SetLeft(editor.Surface, crop.X); Canvas.SetTop(editor.Surface, crop.Y);
+            Canvas.SetLeft(editor.Handles, crop.X); Canvas.SetTop(editor.Handles, crop.Y);
+        }
+        editor.Surface.CropChanged += Position; Position();
+        var scale = new ScaleTransform(zoom.Value, zoom.Value); viewport.LayoutTransform = scale;
         zoom.ValueChanged += (_, _) => { scale.ScaleX = zoom.Value; scale.ScaleY = zoom.Value; };
-        var scroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = editor.Surface };
+        var scroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = viewport, Padding = new Thickness(12) };
         scroll.SetResourceReference(Control.BackgroundProperty, "EditorBackground"); root.Children.Add(scroll);
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
     }

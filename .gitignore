@@ -3,6 +3,7 @@ src/bin/
 src/obj/
 dist/
 artifacts/
+vendor/media/*.exe
 **/Captures/
 **/Data/
 **/Diagnostics/

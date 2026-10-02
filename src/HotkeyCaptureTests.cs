@@ -95,7 +95,7 @@ internal static class HotkeyCaptureTests
                     var shot = Field(save, "ScreenshotHotkey"); var record = Field(save, "RecordingHotkey");
                     await FocusAsync(save, shot); await PressAsync(save, Key.F8, ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift);
                     await FocusAsync(save, record); await PressAsync(save, Key.F9, ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift);
-                    Ensure(shot.Text == newShot && record.Text == newRecord && triggered.Count == 0, "New combinations were not recorded");
+                    Ensure(shot.Text == newShot && record.Text == newRecord && triggered.Count == 0, $"New combinations were not recorded (shot={shot.Text}, record={record.Text}, actions={string.Join(',', triggered)})");
                     Ensure(config.ScreenshotHotkey == oldShot, "Input changed active settings before Save");
                     UiChangeTests.Render(save, "settings-hotkeys-light.png");
                     ThemeService.Apply("Dark"); UiChangeTests.Render(save, "settings-hotkeys-dark.png"); ThemeService.Apply("Light");
@@ -156,7 +156,7 @@ internal static class HotkeyCaptureTests
         Ensure(field.IsKeyboardFocused, "Shortcut field could not receive keyboard focus");
     }
 
-    private static async Task ActivateAsync(Window window)
+    internal static async Task ActivateAsync(Window window)
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         window.Activate();
@@ -171,7 +171,7 @@ internal static class HotkeyCaptureTests
         await Task.Delay(100);
     }
 
-    private static async Task PressAsync(Window window, Key key, ModifierKeys modifiers = ModifierKeys.None)
+    internal static async Task PressAsync(Window window, Key key, ModifierKeys modifiers = ModifierKeys.None)
     {
         // Synthetic input is sent only while our own verification window is foreground.
         Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive, $"Verification window is not foreground (foreground={GetForegroundWindow()}, own={new WindowInteropHelper(window).Handle}, active={window.IsActive}); no keys were sent");
@@ -182,17 +182,31 @@ internal static class HotkeyCaptureTests
         if (modifiers.HasFlag(ModifierKeys.Shift)) keys.Add(Key.LeftShift);
         if (modifiers.HasFlag(ModifierKeys.Windows)) keys.Add(Key.LWin);
         keys.Add(key);
-        var inputs = keys.Select(k => InputFor(k, false)).Concat(keys.AsEnumerable().Reverse().Select(k => InputFor(k, true))).ToArray();
-        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
-        if (sent != inputs.Length)
+        void Send(INPUT[] inputs) => Ensure(SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()) == inputs.Length, "Windows did not accept verification keystrokes");
+        try
         {
-            var release = keys.Select(k => InputFor(k, true)).ToArray(); SendInput((uint)release.Length, release, Marshal.SizeOf<INPUT>());
-            throw new InvalidOperationException("Windows did not accept verification keystrokes");
+            // Keep modifiers held until WPF has processed the ordinary key;
+            // submitting the whole cycle in one batch can release them first.
+            if (keys.Count > 1) { Send(keys.Take(keys.Count - 1).Select(k => InputFor(k, false)).ToArray()); await Task.Delay(30); }
+            Send(new[] { InputFor(key, false) }); await Task.Delay(40); Send(new[] { InputFor(key, true) }); await Task.Delay(30);
         }
-        await Task.Delay(100);
+        finally { Send(keys.AsEnumerable().Reverse().Select(k => InputFor(k, true)).ToArray()); }
+        await Task.Delay(60);
     }
 
-    private static INPUT InputFor(Key key, bool release) => new() { Type = 1, Data = new INPUTUNION { Keyboard = new KEYBDINPUT { VirtualKey = (ushort)KeyInterop.VirtualKeyFromKey(key), Flags = release ? 2u : 0u } } };
+    private static INPUT InputFor(Key key, bool release) => new() { Type = 1, Data = new INPUTUNION { Keyboard = new KEYBDINPUT { VirtualKey = (ushort)KeyInterop.VirtualKeyFromKey(key),
+        // Dedicated arrows are extended keys. Omitting this flag produces the
+        // numpad variant, for which Windows synthesizes Shift transitions.
+        Flags = (release ? 2u : 0u) | (key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.Insert or Key.Delete or Key.PageUp or Key.PageDown or Key.RightCtrl or Key.RightAlt ? 1u : 0u) } } };
+    internal static async Task DragAsync(Window window, Point start, Point end)
+    {
+        await ActivateAsync(window);
+        Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive && Keyboard.Modifiers == ModifierKeys.None, "Verification window is not foreground; no pointer input was sent");
+        var old = System.Windows.Forms.Cursor.Position;
+        void Send(uint flags) { var input = new[] { new INPUT { Type = 0, Data = new INPUTUNION { Mouse = new MOUSEINPUT { Flags = flags } } } }; Ensure(SendInput(1, input, Marshal.SizeOf<INPUT>()) == 1, "Pointer input failed"); }
+        try { SetCursorPos((int)Math.Round(start.X), (int)Math.Round(start.Y)); await Task.Delay(50); Send(2); await Task.Delay(60); SetCursorPos((int)Math.Round(end.X), (int)Math.Round(end.Y)); await Task.Delay(80); Send(4); await Task.Delay(80); }
+        finally { Send(4); SetCursorPos(old.X, old.Y); }
+    }
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { internal uint Type; internal INPUTUNION Data; }
     [StructLayout(LayoutKind.Explicit)] private struct INPUTUNION { [FieldOffset(0)] internal KEYBDINPUT Keyboard; [FieldOffset(0)] internal MOUSEINPUT Mouse; }
     [StructLayout(LayoutKind.Sequential)] private struct KEYBDINPUT { internal ushort VirtualKey, ScanCode; internal uint Flags, Time; internal IntPtr Extra; }
@@ -204,5 +218,6 @@ internal static class HotkeyCaptureTests
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint first, uint second, bool attach);
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, INPUT[] inputs, int size);
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     private static void Ensure(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 }

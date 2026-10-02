@@ -21,9 +21,9 @@ internal sealed class PromptWindow : Window
     {
         Ui.Theme(this);
         Owner = owner; Title = title; Width = 440; Height = 260; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new StackPanel { Margin = new Thickness(20) }; Content = root;
+        var root = new StackPanel { Margin = UiDesign.Padding("PagePadding") }; Content = root;
         root.Children.Add(new TextBlock { Text = hint, Margin = new Thickness(0, 0, 0, 12) });
-        _input = new TextBox { Text = value, Height = 100, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap }; root.Children.Add(_input);
+        _input = new TextBox { Text = value, Height = 100, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalContentAlignment = VerticalAlignment.Top, Padding = new Thickness(12) }; root.Children.Add(_input);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
         buttons.Children.Add(Ui.Button("取消", () => DialogResult = false)); buttons.Children.Add(Ui.Button("确定", () => DialogResult = true)); root.Children.Add(buttons);
         Loaded += (_, _) => { _input.Focus(); _input.SelectAll(); };
@@ -39,9 +39,9 @@ internal sealed class WindowPicker : Window
     {
         Ui.Theme(this);
         Owner = owner; Title = "轻截 · 选择窗口"; Width = 580; Height = 450; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new DockPanel { Margin = new Thickness(20) }; Content = root;
-        var hint = new TextBlock { Text = "选择需要截取或录制的窗口（请保持窗口未最小化）", Margin = new Thickness(0, 0, 0, 14) }; DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint);
-        _list = new ListBox { ItemsSource = Native.Windows(), Padding = new Thickness(6) };
+        var root = new DockPanel { Margin = UiDesign.Padding("PagePadding") }; Content = root;
+        var hint = new TextBlock { Text = "选择需要截取或录制的窗口（请保持窗口未最小化）", Margin = new Thickness(0, 0, 0, 16), TextWrapping = TextWrapping.Wrap }; DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint);
+        _list = new ListBox { ItemsSource = Native.Windows(), Padding = new Thickness(8) };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) }; DockPanel.SetDock(buttons, Dock.Bottom);
         buttons.Children.Add(Ui.Button("取消", () => DialogResult = false)); buttons.Children.Add(Ui.Button("选择", () => { if (_list.SelectedItem != null) DialogResult = true; })); root.Children.Add(buttons);
         root.Children.Add(_list);

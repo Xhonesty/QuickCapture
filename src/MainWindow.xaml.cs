@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -24,6 +25,8 @@ public partial class MainWindow : Window
     private RecordingFrame? _frame;
     private bool _busy, _exit, _stopBusy;
     private EditorWindow? _editor;
+    private readonly Stopwatch _recordingTime = new();
+    private RecordingMetadata? _recordingMetadata;
     public MainWindow()
     {
         ThemeService.Apply(_settings.Theme);
@@ -35,7 +38,7 @@ public partial class MainWindow : Window
             ConfigureHotkeys();
         };
         Loaded += (_, _) => { LoadControls(); CreateTray(); RefreshRecent(); };
-        _recorder.Started += () => Dispatcher.BeginInvoke(() => { _bar?.SetRecording(); SetStatus("录制中 · 再按录屏快捷键停止"); });
+        _recorder.Started += () => Dispatcher.BeginInvoke(() => { _recordingTime.Restart(); _bar?.SetRecording(); SetStatus("录制中 · 再按录屏快捷键停止"); });
         _recorder.Failed += error => Dispatcher.BeginInvoke(() =>
         {
             ErrorLog.Write(new InvalidOperationException(error));
@@ -177,7 +180,8 @@ public partial class MainWindow : Window
             _bar = new RecordingBar(_settings.RecordingHotkey, async () => await StopAsync()); _bar.Show();
             if (recordingRegion != null) { _frame = new RecordingFrame(recordingRegion); _frame.Show(); }
             UpdateRecordingUi();
-            await _recorder.StartAsync(source, _settings, Paths.NewCapture(_settings.OutputDirectory, "mp4")).WaitAsync(TimeSpan.FromSeconds(20));
+            _recordingMetadata = new(_settings.RecordingQuality, _settings.FramesPerSecond, _settings.SystemAudio || _settings.Microphone, 0);
+            await _recorder.StartAsync(source, _settings, RecordingRecovery.NewMaster()).WaitAsync(TimeSpan.FromSeconds(20));
             UpdateRecordingUi();
         }
         catch (Exception ex) { _bar?.Close(); _bar = null; _frame?.Close(); _frame = null; _recorder.Dispose(); ShowMain(); Ui.Error(this, ex); }
@@ -186,11 +190,14 @@ public partial class MainWindow : Window
     private async Task StopAsync()
     {
         if (_stopBusy || !_recorder.IsBusy) return;
-        _stopBusy = true; _bar?.SetSaving(); SetStatus("正在完成编码并保存视频…");
+        _stopBusy = true; _bar?.SetSaving(); SetStatus("正在完成编码…");
         try
         {
             // Keep the application alive until the encoder has finalized the MP4.
-            string path = await _recorder.StopAsync(); Saved(path);
+            string path = await _recorder.StopAsync(); _recordingTime.Stop();
+            RecordingRecovery.Remember(path, (_recordingMetadata ?? new(ExportQuality.Medium, 30, false, 0)) with { Duration = _recordingTime.Elapsed.TotalSeconds });
+            _recorder.Dispose(); _bar?.Close(); _bar = null; _frame?.Close(); _frame = null; UpdateRecordingUi();
+            if (!_exit) EditRecording(path); else RefreshRecent();
         }
         catch (Exception ex) { Ui.Error(this, ex); }
         finally
@@ -198,6 +205,22 @@ public partial class MainWindow : Window
             _recorder.Dispose(); _bar?.Close(); _bar = null; _frame?.Close(); _frame = null; _stopBusy = false;
             UpdateRecordingUi(); if (!_exit) ShowMain();
         }
+    }
+    private void EditRecording(string path)
+    {
+        _busy = true;
+        try
+        {
+            ShowMain(); var dialog = new RecordingEditWindow(this, path, _settings, RecordingRecovery.Load(path));
+            if (dialog.ShowDialog() == true)
+            {
+                Saved(dialog.SavedPath!);
+                try { RecordingRecovery.Remove(path); } catch (IOException ex) { ErrorLog.Write(ex); }
+                RefreshRecent();
+            }
+            else { RefreshRecent(); SetStatus("原始录屏已保留，双击最近文件中的「待导出」项目继续编辑。"); }
+        }
+        finally { _busy = false; }
     }
     private void UpdateRecordingUi()
     {
@@ -211,9 +234,13 @@ public partial class MainWindow : Window
         try
         {
             Directory.CreateDirectory(_settings.OutputDirectory);
+            Directory.CreateDirectory(RecordingRecovery.DirectoryPath);
+            var extensions = new[] { ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".mp4", ".webm", ".gif" };
             RecentList.ItemsSource = new DirectoryInfo(_settings.OutputDirectory).EnumerateFiles()
-                .Where(f => (f.Extension.Equals(".png", StringComparison.OrdinalIgnoreCase) || f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)) && !f.Name.EndsWith(".partial.mp4"))
-                .OrderByDescending(f => f.LastWriteTime).Take(20).Select(f => new RecentItem(f.FullName, f.Name, $"{f.LastWriteTime:MM-dd HH:mm}  ·  {f.Length / 1024d / 1024d:F2} MB")).ToArray();
+                .Concat(new DirectoryInfo(RecordingRecovery.DirectoryPath).EnumerateFiles("master-*.mp4"))
+                .Where(f => extensions.Contains(f.Extension.ToLowerInvariant()) && !f.Name.Contains(".partial.", StringComparison.OrdinalIgnoreCase))
+                .DistinctBy(f => f.FullName, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(f => f.LastWriteTime).Take(20).Select(f => new RecentItem(f.FullName, (RecordingRecovery.Owns(f.FullName) ? "待导出 · " : "") + f.Name, $"{f.LastWriteTime:MM-dd HH:mm}  ·  {f.Length / 1024d / 1024d:F2} MB")).ToArray();
         }
         catch (Exception ex) { SetStatus(ex.Message); }
     }
@@ -258,7 +285,7 @@ public partial class MainWindow : Window
         finally { _busy = false; }
     }
     private void Recent_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    { if (RecentList.SelectedItem is RecentItem item) try { Native.Open(item.Path); } catch (Exception ex) { Ui.Error(this, ex); } }
+    { if (RecentList.SelectedItem is RecentItem item) try { if (RecordingRecovery.Owns(item.Path)) { if (!_busy && !_recorder.IsBusy) EditRecording(item.Path); } else Native.Open(item.Path); } catch (Exception ex) { Ui.Error(this, ex); } }
 }
 
 internal sealed record RecentItem(string Path, string Name, string Detail);

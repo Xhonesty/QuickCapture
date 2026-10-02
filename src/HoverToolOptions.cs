@@ -23,7 +23,7 @@ internal sealed class HoverToolOptions : IDisposable
     {
         _button = button; _opening = opening;
         _dropdowns = content.Children.OfType<ComboBox>().ToArray();
-        _panel = new Border { Child = content, Padding = new Thickness(12), CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1) };
+        _panel = new Border { Child = content, Padding = UiDesign.Padding("PopupPadding"), CornerRadius = UiDesign.Radius, BorderThickness = new Thickness(1), Effect = UiDesign.Shadow() };
         _panel.SetResourceReference(Border.BackgroundProperty, "PanelBackground");
         _panel.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         _panel.SetResourceReference(TextElement.ForegroundProperty, "TextPrimary");

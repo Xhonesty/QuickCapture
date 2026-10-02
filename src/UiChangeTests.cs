@@ -103,9 +103,9 @@ internal static class UiChangeTests
                 selection.BeginEditing(region); Ensure(selection.Editor!.Surface.Count == 0, "Reselect retained old annotations");
                 var border = FindVisual<Border>(selection, b => b.Child is WrapPanel);
                 var panel = (WrapPanel)border!.Child;
-                var save = FindVisual<Button>(panel, b => (string?)b.Content == "保存");
-                save!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Ensure(done.Task.IsCompleted && saved != null && File.Exists(saved), "Save button did not finish the screenshot");
+                var copy = FindVisual<Button>(panel, b => b.Name == "Tool_copy");
+                copy!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
+                Ensure(done.Task.IsCompleted && saved != null && File.Exists(saved), "Copy / auto-save button did not finish the screenshot");
             }
             finally { selection.Close(); ThemeService.Apply("Dark"); }
         });
@@ -129,12 +129,13 @@ internal static class UiChangeTests
         await HotkeyCaptureTests.RunUiAsync(check);
     }
     internal static void Render(Window window, string name)
-        => RenderElement(window, name);
+        => RenderElement(window.Content as FrameworkElement ?? window, name);
     internal static void RenderElement(FrameworkElement window, string name)
     {
         window.UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(window);
         var rendered = new RenderTargetBitmap((int)Math.Round(window.ActualWidth * dpi.DpiScaleX), (int)Math.Round(window.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        var backdrop = new DrawingVisual(); using (var dc = backdrop.RenderOpen()) dc.DrawRectangle(Window.GetWindow(window)?.Background ?? Brushes.Transparent, null, new Rect(0, 0, window.ActualWidth, window.ActualHeight)); rendered.Render(backdrop);
         rendered.Render(window);
         string path = Path.Combine(PreviewDirectory, name); if (File.Exists(path)) File.Delete(path); CaptureService.Save(rendered, path);
     }

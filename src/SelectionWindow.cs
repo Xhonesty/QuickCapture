@@ -148,16 +148,31 @@ internal sealed class SelectionWindow : Window
         SetSelection(new Rect(origin, new Size(region.Width / dpi.DpiScaleX, region.Height / dpi.DpiScaleY)));
         _size.Text = $"{region.Width} × {region.Height} px";
         _tip.Visibility = Visibility.Collapsed; Cursor = Cursors.Arrow;
-        Editor = new ScreenshotEditor(this, Crop(region), _settings ?? new Settings(), _saved ?? (_ => { }), () => _finish(null));
+        Editor = new ScreenshotEditor(this, _image, _settings ?? new Settings(), _saved ?? (_ => { }), () => _finish(null), new Int32Rect(region.X - _screen.Bounds.X, region.Y - _screen.Bounds.Y, region.Width, region.Height));
         // WPF uses DIPs, annotations use source pixels: cancel the monitor scale
         // so the selected image remains at exactly its original screen location.
         Editor.Surface.LayoutTransform = new ScaleTransform(1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY);
+        Editor.Handles.LayoutTransform = Editor.Surface.LayoutTransform;
         Canvas.SetLeft(Editor.Surface, origin.X); Canvas.SetTop(Editor.Surface, origin.Y);
         _canvas.Children.Insert(0, Editor.Surface);
-        _toolbar = new Border { CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 5, 4, 5), BorderThickness = new Thickness(1), Child = Editor.CreateToolbar(Reselect), Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 16, ShadowDepth = 3, Opacity = 0.25 } };
+        _canvas.Children.Add(Editor.Handles);
+        Editor.Surface.CropChanged += UpdateEditingBounds;
+        _toolbar = new Border { CornerRadius = UiDesign.Radius, Padding = new Thickness(8), BorderThickness = new Thickness(1), Child = Editor.CreateToolbar(() =>
+        { if (Editor!.Surface.Count == 0 || MessageBox.Show(this, "重新框选会清除当前标注。调整大小或位置可使用裁剪手柄并保留标注。仍要重新框选吗？", "重新框选", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) Reselect(); }), Effect = UiDesign.Shadow() };
         _toolbar.SetResourceReference(Border.BackgroundProperty, "PanelBackground"); _toolbar.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
-        _canvas.Children.Add(_toolbar); PositionToolbar();
+        _canvas.Children.Add(_toolbar); UpdateEditingBounds(); PositionToolbar();
         Editor.Surface.Focus(); _modeChanged?.Invoke(this, true);
+    }
+    private void UpdateEditingBounds()
+    {
+        if (Editor == null) return;
+        var crop = Editor.Surface.CropBounds; var dpi = VisualTreeHelper.GetDpi(this);
+        var origin = PointFromScreen(new Point(_screen.Bounds.X + crop.X, _screen.Bounds.Y + crop.Y));
+        SetSelection(new Rect(origin, new Size(crop.Width / dpi.DpiScaleX, crop.Height / dpi.DpiScaleY)));
+        _size.Text = $"{crop.Width} × {crop.Height} px";
+        Canvas.SetLeft(Editor.Surface, origin.X); Canvas.SetTop(Editor.Surface, origin.Y);
+        Canvas.SetLeft(Editor.Handles, origin.X); Canvas.SetTop(Editor.Handles, origin.Y);
+        PositionToolbar();
     }
     private void PositionToolbar()
     {
@@ -174,7 +189,7 @@ internal sealed class SelectionWindow : Window
     }
     private void RemoveEditor()
     {
-        if (Editor != null) { Editor.Dispose(); _canvas.Children.Remove(Editor.Surface); Editor = null; }
+        if (Editor != null) { Editor.Surface.CropChanged -= UpdateEditingBounds; Editor.Dispose(); _canvas.Children.Remove(Editor.Surface); _canvas.Children.Remove(Editor.Handles); Editor = null; }
         if (_toolbar != null) { _canvas.Children.Remove(_toolbar); _toolbar = null; }
     }
     internal void Reselect()

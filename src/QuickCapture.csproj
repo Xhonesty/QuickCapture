@@ -12,11 +12,13 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <AssemblyName>QuickCapture</AssemblyName>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets/app.ico" />
     <Resource Include="Assets/app.png" />
+    <Resource Include="Assets/Icons/*.svg" />
     <PackageReference Include="ScreenRecorderLib" Version="7.0.1" />
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
   </ItemGroup>
 </Project>

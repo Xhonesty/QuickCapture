@@ -25,3 +25,25 @@ SOFTWARE.
 The portable distribution includes Microsoft .NET runtime components.
 Their licenses and notices are included as DotNet-Core-LICENSE.txt,
 DotNet-Core-NOTICES.txt and DotNet-Desktop-LICENSE.txt alongside the runtime.
+
+Lucide vector icons
+https://github.com/lucide-icons/lucide/tree/5a92b9ba262de5bf10e864219883267672c05db8
+ISC license; bundled SVG subset is unmodified.
+Full license: licenses/Lucide.txt (source tree: docs/licenses/Lucide.txt).
+
+SkiaSharp / SkiaSharp.NativeAssets.Win32 4.153.1
+https://github.com/mono/SkiaSharp
+MIT license; Skia and bundled native libraries retain their own notices.
+Full license and third-party notices: licenses/SkiaSharp.txt and
+licenses/Skia-native-NOTICES.txt.
+
+FFmpeg / ffprobe 9.0.2-essentials_build-www.gyan.dev
+https://www.gyan.dev/ffmpeg/builds/
+https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2
+Corresponding FFmpeg source: https://github.com/FFmpeg/FFmpeg/tree/946fcce07b
+GPLv3 static build, called as separate command-line processes.
+Unmodified executable hashes, download URL and version are recorded in
+Tools/media/manifest.json (source tree: vendor/media/manifest.json).
+Full license and build configuration: licenses/FFmpeg.txt and
+licenses/FFmpeg-build.txt. Executables are excluded from the Git repository;
+tools/setup-media.ps1 obtains and verifies the pinned upstream package.

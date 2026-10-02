@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace QuickCapture;
 
-internal enum AnnotationTool { Arrow, Rectangle, Text, Mosaic, Freehand, MosaicBrush }
+internal enum AnnotationTool { Arrow, Rectangle, Text, Mosaic, Freehand, MosaicBrush, Crop }
 internal sealed record Annotation(AnnotationTool Tool, Point Start, Point End, Color Color, string Text = "", IReadOnlyList<Point>? Points = null, double Width = 3);
 
 internal sealed class AnnotationSurface : FrameworkElement
@@ -15,13 +16,21 @@ internal sealed class AnnotationSurface : FrameworkElement
     private readonly BitmapSource _image;
     private readonly BitmapSource _mosaic;
     private readonly List<Annotation> _items = new();
-    private readonly Stack<Annotation> _redo = new();
+    private sealed record Edit(Annotation? Added, Int32Rect Before, Int32Rect After);
+    private readonly Stack<Edit> _undo = new(), _redo = new();
+    public Int32Rect CropBounds { get; private set; }
+    public int SourceWidth => _image.PixelWidth;
+    public int SourceHeight => _image.PixelHeight;
+    internal BitmapSource Original => _image;
+    public bool CanUndo => _undo.Count > 0;
+    public bool CanRedo => _redo.Count > 0;
+    public event Action? CropChanged;
     public Annotation? Preview { get; set; }
     public int Count => _items.Count;
     public event Action? Changed;
-    public AnnotationSurface(BitmapSource image)
+    public AnnotationSurface(BitmapSource image, Int32Rect? crop = null)
     {
-        _image = image; Width = image.PixelWidth; Height = image.PixelHeight;
+        _image = image; CropBounds = crop ?? new Int32Rect(0, 0, image.PixelWidth, image.PixelHeight); ValidateCrop(CropBounds); Width = CropBounds.Width; Height = CropBounds.Height;
         var converted = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
         var pixels = new byte[image.PixelWidth * image.PixelHeight * 4];
         converted.CopyPixels(pixels, image.PixelWidth * 4, 0);
@@ -40,15 +49,50 @@ internal sealed class AnnotationSurface : FrameworkElement
         _mosaic = BitmapSource.Create(image.PixelWidth, image.PixelHeight, 96, 96, PixelFormats.Bgra32, null, mosaicPixels, stride); _mosaic.Freeze();
         ClipToBounds = true; Focusable = true;
     }
-    public void Add(Annotation item) { _items.Add(item); _redo.Clear(); Preview = null; InvalidateVisual(); Changed?.Invoke(); }
-    public void Undo() { if (_items.Count > 0) { _redo.Push(_items[^1]); _items.RemoveAt(_items.Count - 1); InvalidateVisual(); Changed?.Invoke(); } }
-    public void Redo() { if (_redo.TryPop(out var item)) { _items.Add(item); InvalidateVisual(); Changed?.Invoke(); } }
+    private Annotation OriginalCoordinates(Annotation item)
+    {
+        var offset = new Vector(CropBounds.X, CropBounds.Y);
+        return item with { Start = item.Start + offset, End = item.End + offset, Points = item.Points?.Select(p => p + offset).ToArray() };
+    }
+    public void Add(Annotation item) { item = OriginalCoordinates(item); _items.Add(item); _undo.Push(new(item, CropBounds, CropBounds)); _redo.Clear(); Preview = null; Notify(); }
+    private void ValidateCrop(Int32Rect crop)
+    {
+        if (crop.Width < Math.Min(4, SourceWidth) || crop.Height < Math.Min(4, SourceHeight) || crop.X < 0 || crop.Y < 0 || crop.X + crop.Width > SourceWidth || crop.Y + crop.Height > SourceHeight) throw new ArgumentException("裁剪范围超出原图或太小。");
+    }
+    public void SetCrop(Int32Rect crop, bool remember = true)
+    {
+        ValidateCrop(crop); if (crop == CropBounds) return; var before = CropBounds;
+        CropBounds = crop; Width = crop.Width; Height = crop.Height; Preview = null;
+        if (remember) { _undo.Push(new(null, before, crop)); _redo.Clear(); }
+        CropChanged?.Invoke(); Notify();
+    }
+    internal void CommitCrop(Int32Rect before)
+    {
+        if (before != CropBounds) { _undo.Push(new(null, before, CropBounds)); _redo.Clear(); Notify(); }
+    }
+    public void Undo()
+    {
+        if (!_undo.TryPop(out var edit)) return;
+        if (edit.Added != null) _items.RemoveAt(_items.Count - 1); else SetCrop(edit.Before, false);
+        _redo.Push(edit); Notify();
+    }
+    public void Redo()
+    {
+        if (!_redo.TryPop(out var edit)) return;
+        if (edit.Added != null) _items.Add(edit.Added); else SetCrop(edit.After, false);
+        _undo.Push(edit); Notify();
+    }
+    private void Notify() { InvalidateVisual(); Changed?.Invoke(); }
     protected override void OnRender(DrawingContext dc) { base.OnRender(dc); Draw(dc, true); }
     private void Draw(DrawingContext dc, bool preview)
     {
-        dc.DrawImage(_image, new Rect(0, 0, Width, Height));
+        // Annotations and mosaic blocks remain anchored to original image pixels.
+        // Cropping changes only this viewport transform, including after undo.
+        dc.PushTransform(new TranslateTransform(-CropBounds.X, -CropBounds.Y));
+        dc.DrawImage(_image, new Rect(0, 0, SourceWidth, SourceHeight));
         foreach (var item in _items) DrawItem(dc, item);
-        if (preview && Preview != null) DrawItem(dc, Preview);
+        if (preview && Preview != null) DrawItem(dc, OriginalCoordinates(Preview));
+        dc.Pop();
     }
     private void DrawItem(DrawingContext dc, Annotation a)
     {
@@ -89,7 +133,7 @@ internal sealed class AnnotationSurface : FrameworkElement
         }
     }
     private void DrawMosaic(DrawingContext dc, Geometry clip)
-    { dc.PushClip(clip); dc.DrawImage(_mosaic, new Rect(0, 0, Width, Height)); dc.Pop(); }
+    { dc.PushClip(clip); dc.DrawImage(_mosaic, new Rect(0, 0, SourceWidth, SourceHeight)); dc.Pop(); }
     public BitmapSource Export()
     {
         var visual = new DrawingVisual();

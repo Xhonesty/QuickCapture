@@ -10,10 +10,28 @@ $publishArgs = @('publish', (Join-Path $projectRoot 'src\QuickCapture.csproj'), 
 if ($Offline) { $publishArgs += @('--source', (Join-Path $projectRoot '.tools\feed'), '-p:NuGetAudit=false') }
 & $sdk @publishArgs
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+# Native NuGet dependencies copy large debug symbols even with DebugSymbols=false.
+# These files are build outputs, unnecessary in the portable runtime.
+foreach ($symbolFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'dist') -Filter '*.pdb' -File) { Remove-Item -LiteralPath $symbolFile.FullName }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination (Join-Path $projectRoot 'dist')
 if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\verification.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\verification.md') -Destination (Join-Path $projectRoot 'dist\verification.md') }
 if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\icon-processing.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\icon-processing.md') -Destination (Join-Path $projectRoot 'dist\icon-processing.md') }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $projectRoot 'dist\QuickCapture-NOTICES.txt')
+$mediaSource = Join-Path $projectRoot 'vendor\media'
+if ((Test-Path -LiteralPath (Join-Path $mediaSource 'ffmpeg.exe')) -and (Test-Path -LiteralPath (Join-Path $mediaSource 'ffprobe.exe'))) {
+    $mediaManifest = Get-Content -LiteralPath (Join-Path $mediaSource 'manifest.json') -Raw | ConvertFrom-Json
+    foreach ($mediaName in @('ffmpeg', 'ffprobe')) { if ((Get-FileHash -LiteralPath (Join-Path $mediaSource "$mediaName.exe") -Algorithm SHA256).Hash -ne $mediaManifest."${mediaName}Sha256") { throw "$mediaName.exe 与固定版本清单不符，请运行 tools/setup-media.ps1。" } }
+    $mediaDestination = Join-Path $projectRoot 'dist\Tools\media'
+    New-Item -ItemType Directory -Path $mediaDestination -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $mediaSource 'ffmpeg.exe'), (Join-Path $mediaSource 'ffprobe.exe') -Destination $mediaDestination
+    if (Test-Path -LiteralPath (Join-Path $mediaSource 'manifest.json')) { Copy-Item -LiteralPath (Join-Path $mediaSource 'manifest.json') -Destination $mediaDestination }
+} else { Write-Warning 'FFmpeg 未捆绑：运行 tools/setup-media.ps1 后重新构建；当前仍可录制并保存原生 MP4。' }
+$licenseDestination = Join-Path $projectRoot 'dist\licenses'
+New-Item -ItemType Directory -Path $licenseDestination -Force | Out-Null
+foreach ($licenseFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs\licenses') -File) { Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Force }
+foreach ($document in @('design-spec.md', 'media-tools.md')) {
+    if (Test-Path -LiteralPath (Join-Path $projectRoot "docs\$document")) { Copy-Item -LiteralPath (Join-Path $projectRoot "docs\$document") -Destination (Join-Path $projectRoot 'dist') }
+}
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $projectRoot 'dist\QuickCapture.runtimeconfig.json') -Raw | ConvertFrom-Json
 foreach ($framework in $runtimeConfig.runtimeOptions.includedFrameworks) {
     if ($framework.name -eq 'Microsoft.NETCore.App') { $label = 'Core'; $packageName = 'microsoft.netcore.app.runtime.win-x64' }

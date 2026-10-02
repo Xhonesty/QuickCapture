@@ -1,0 +1,10 @@
+{
+  "version": "9.0.2-essentials_build-www.gyan.dev",
+  "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip",
+  "archiveSha256": "60F467265B1E312373DBCD92200C2618A74850F98D3D078E94296BB3FA2047BA",
+  "ffmpegSha256": "3256173F3F8BFFD7DF12227C68ADF68025EDB1832273A9530688A7BB1ED8EDEC",
+  "ffprobeSha256": "F0D36ECBBDD3BCFAC3EFA078C96C7271C2E68B3810595552AC3B7F17E9A65C52",
+  "license": "GPL-3.0-or-later",
+  "buildSource": "https://www.gyan.dev/ffmpeg/builds/",
+  "ffmpegSource": "https://github.com/FFmpeg/FFmpeg/tree/946fcce07b"
+}
