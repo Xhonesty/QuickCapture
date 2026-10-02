@@ -29,6 +29,15 @@ if ((Test-Path -LiteralPath (Join-Path $mediaSource 'ffmpeg.exe')) -and (Test-Pa
 $licenseDestination = Join-Path $projectRoot 'dist\licenses'
 New-Item -ItemType Directory -Path $licenseDestination -Force | Out-Null
 foreach ($licenseFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs\licenses') -File) { Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Force }
+$upgradeDocs = Join-Path $projectRoot 'dist\docs'
+New-Item -ItemType Directory -Path $upgradeDocs -Force | Out-Null
+foreach ($document in @('feature-upgrade.md', 'in-place-text.md', 'design-spec.md', 'media-tools.md', 'verification.md', 'icon-processing.md')) {
+    $documentationSource = Join-Path $projectRoot "docs\$document"
+    if (Test-Path -LiteralPath $documentationSource) { Copy-Item -LiteralPath $documentationSource -Destination $upgradeDocs -Force }
+}
+$documentationImages = Join-Path $projectRoot 'docs\images'
+if (Test-Path -LiteralPath $documentationImages) { Copy-Item -LiteralPath $documentationImages -Destination $upgradeDocs -Recurse -Force }
+# Keep the earlier root-level copies for portable-package compatibility.
 foreach ($document in @('design-spec.md', 'media-tools.md')) {
     if (Test-Path -LiteralPath (Join-Path $projectRoot "docs\$document")) { Copy-Item -LiteralPath (Join-Path $projectRoot "docs\$document") -Destination (Join-Path $projectRoot 'dist') }
 }

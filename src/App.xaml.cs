@@ -23,6 +23,12 @@ public partial class App : Application
             Shutdown(code);
             return;
         }
+        if (Array.IndexOf(e.Args, "--text-demo") >= 0)
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            await AcceptanceArtifacts.RunDemoAsync(true);
+            return;
+        }
         _instance = new Mutex(true, "Local\\QuickCapture.Personal.x64", out bool created);
         if (!created)
         {

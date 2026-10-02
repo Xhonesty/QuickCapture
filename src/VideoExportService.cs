@@ -10,10 +10,10 @@ namespace QuickCapture;
 
 internal sealed record VideoInfo(double Duration, int Width, int Height, double Fps, bool HasAudio, string VideoCodec = "", string AudioCodec = "");
 internal sealed record VideoExportRequest(string Source, string Destination, RecordingFormat Format, ExportQuality Quality,
-    double Start, double End, double Speed = 1, bool Mute = false, int GifFps = 15, ExportQuality SourceQuality = ExportQuality.Medium, bool Overwrite = false)
+    double Start, double End, double Speed = 1, bool Mute = false, int GifFps = 15, ExportQuality SourceQuality = ExportQuality.Medium, bool Overwrite = false, VideoCrop? Crop = null)
 {
     internal double OutputDuration => (End - Start) / Speed;
-    internal bool OriginalMp4(VideoInfo info) => Format == RecordingFormat.Mp4 && Start <= 0.0001 && End >= info.Duration - 0.0001 && Speed == 1 && !Mute && Quality == SourceQuality && Path.GetExtension(Source).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
+    internal bool OriginalMp4(VideoInfo info) => Format == RecordingFormat.Mp4 && (Crop == null || Crop.IsFullFrame(info)) && Start <= 0.0001 && End >= info.Duration - 0.0001 && Speed == 1 && !Mute && Quality == SourceQuality && Path.GetExtension(Source).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
 }
 
 internal static class VideoExportService
@@ -47,6 +47,7 @@ internal static class VideoExportService
         if (!double.IsFinite(request.Start) || !double.IsFinite(request.End) || request.Start < 0 || request.End > info.Duration + 0.001 || request.End < request.Start || (info.Duration > 0 && request.End - request.Start < Math.Min(1 / info.Fps, info.Duration))) throw new ArgumentException("请选择有效的起止时间，至少保留一帧。");
         if (request.Speed is not (0.5 or 1 or 1.5 or 2)) throw new ArgumentException("不支持该倍率。");
         if (request.GifFps < 5 || request.GifFps > 30) throw new ArgumentException("GIF 帧率需为 5–30 FPS。");
+        request.Crop?.Validate(info);
         if (Path.GetFullPath(request.Source).Equals(Path.GetFullPath(request.Destination), StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("导出目标不能覆盖正在编辑的原始录屏，请使用其他文件名。");
         if (Path.GetExtension(request.Destination).ToLowerInvariant() != "." + Extension(request.Format)) throw new ArgumentException("导出文件扩展名与格式不一致。");
         if (File.Exists(request.Destination) && !request.Overwrite) throw new IOException("目标文件已存在。");
@@ -56,11 +57,13 @@ internal static class VideoExportService
     {
         var args = new List<string> { "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", request.Source };
         string video = $"trim=start={Number(request.Start)}:end={Number(request.End)},setpts=(PTS-STARTPTS)/{Number(request.Speed)}";
+        if (request.Crop is { } crop) video += $",crop={crop.Width}:{crop.Height}:{crop.X}:{crop.Y}:exact=1";
         if (request.Format == RecordingFormat.Gif)
         {
-            int width = request.Quality == ExportQuality.Low ? 480 : request.Quality == ExportQuality.Medium ? 720 : info.Width;
+            int inputWidth = request.Crop?.Width ?? info.Width;
+            int width = request.Quality == ExportQuality.Low ? 480 : request.Quality == ExportQuality.Medium ? 720 : inputWidth;
             int colors = request.Quality == ExportQuality.Low ? 64 : request.Quality == ExportQuality.Medium ? 128 : 256;
-            video += $",fps={request.GifFps},scale={Math.Min(width, info.Width)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
+            video += $",fps={request.GifFps},scale={Math.Min(width, inputWidth)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
             args.AddRange(new[] { "-filter_complex", "[0:v:0]" + video, "-map", "[out]", "-an", "-loop", "0" });
         }
         else
@@ -95,6 +98,7 @@ internal static class VideoExportService
                 if (result.ExitCode != 0) throw new InvalidOperationException("导出失败，原始录屏已保留。\n" + result.Error[^Math.Min(result.Error.Length, 1800)..]);
                 var exported = await ProbeAsync(temp, tools, cancellationToken);
                 if (exported.Width <= 0 || exported.Duration <= 0) throw new InvalidDataException("导出文件验证失败，原始录屏已保留。");
+                if (request.Crop is { } applied && request.Format != RecordingFormat.Gif && (exported.Width != applied.Width || exported.Height != applied.Height)) throw new InvalidDataException("导出视频尺寸与裁剪范围不一致，原始录屏已保留。");
             }
             cancellationToken.ThrowIfCancellationRequested(); File.Move(temp, request.Destination, request.Overwrite); progress?.Report(1);
         }

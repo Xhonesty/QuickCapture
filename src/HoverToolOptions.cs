@@ -17,11 +17,13 @@ internal sealed class HoverToolOptions : IDisposable
     private readonly Border _panel;
     private readonly Action _opening;
     private readonly ComboBox[] _dropdowns;
+    private readonly bool _hover;
+    private readonly Action? _dismissed;
     private readonly DispatcherTimer _close = new() { Interval = TimeSpan.FromMilliseconds(180) };
     internal Popup Popup { get; }
-    public HoverToolOptions(Button button, StackPanel content, Action opening)
+    public HoverToolOptions(Button button, StackPanel content, Action opening, bool hover = true, Action? dismissed = null)
     {
-        _button = button; _opening = opening;
+        _button = button; _opening = opening; _hover = hover; _dismissed = dismissed;
         _dropdowns = content.Children.OfType<ComboBox>().ToArray();
         _panel = new Border { Child = content, Padding = UiDesign.Padding("PopupPadding"), CornerRadius = UiDesign.Radius, BorderThickness = new Thickness(1), Effect = UiDesign.Shadow() };
         _panel.SetResourceReference(Border.BackgroundProperty, "PanelBackground");
@@ -30,13 +32,13 @@ internal sealed class HoverToolOptions : IDisposable
         TextElement.SetFontFamily(_panel, new FontFamily("Segoe UI, Microsoft YaHei UI"));
         Popup = new Popup { Child = _panel, PlacementTarget = button, Placement = PlacementMode.Bottom,
             VerticalOffset = 2, AllowsTransparency = true, StaysOpen = true, Focusable = false };
-        _button.MouseEnter += Enter; _button.MouseLeave += Leave;
+        if (_hover) _button.MouseEnter += Enter; _button.MouseLeave += Leave;
         _panel.MouseEnter += Enter; _panel.MouseLeave += Leave;
         foreach (var combo in _dropdowns) combo.DropDownClosed += DropdownClosed;
         _close.Tick += (_, _) =>
         {
             _close.Stop();
-            if (!_button.IsMouseOver && !_panel.IsMouseOver && !_dropdowns.Any(combo => combo.IsDropDownOpen)) Hide();
+            if (!_button.IsMouseOver && !_panel.IsMouseOver && (_hover || !_panel.IsKeyboardFocusWithin) && !_dropdowns.Any(combo => combo.IsDropDownOpen)) Hide();
         };
     }
     private void Enter(object sender, MouseEventArgs e) => Show();
@@ -45,8 +47,10 @@ internal sealed class HoverToolOptions : IDisposable
     internal void Show() { _close.Stop(); _opening(); Popup.IsOpen = true; }
     internal void Hide()
     {
+        bool wasOpen = Popup.IsOpen;
         foreach (var combo in _dropdowns) combo.IsDropDownOpen = false;
         _close.Stop(); Popup.IsOpen = false;
+        if (wasOpen) _dismissed?.Invoke();
     }
     public void Dispose()
     {

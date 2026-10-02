@@ -31,21 +31,3 @@ internal sealed class PromptWindow : Window
     public static string? Ask(Window owner, string title, string hint, string value)
     { var window = new PromptWindow(owner, title, hint, value); return window.ShowDialog() == true ? window._input.Text : null; }
 }
-
-internal sealed class WindowPicker : Window
-{
-    private readonly ListBox _list;
-    private WindowPicker(Window owner)
-    {
-        Ui.Theme(this);
-        Owner = owner; Title = "轻截 · 选择窗口"; Width = 580; Height = 450; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new DockPanel { Margin = UiDesign.Padding("PagePadding") }; Content = root;
-        var hint = new TextBlock { Text = "选择需要截取或录制的窗口（请保持窗口未最小化）", Margin = new Thickness(0, 0, 0, 16), TextWrapping = TextWrapping.Wrap }; DockPanel.SetDock(hint, Dock.Top); root.Children.Add(hint);
-        _list = new ListBox { ItemsSource = Native.Windows(), Padding = new Thickness(8) };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) }; DockPanel.SetDock(buttons, Dock.Bottom);
-        buttons.Children.Add(Ui.Button("取消", () => DialogResult = false)); buttons.Children.Add(Ui.Button("选择", () => { if (_list.SelectedItem != null) DialogResult = true; })); root.Children.Add(buttons);
-        root.Children.Add(_list);
-        _list.MouseDoubleClick += (_, _) => { if (_list.SelectedItem != null) DialogResult = true; };
-    }
-    public static WindowItem? Pick(Window owner) { var window = new WindowPicker(owner); return window.ShowDialog() == true ? window._list.SelectedItem as WindowItem : null; }
-}

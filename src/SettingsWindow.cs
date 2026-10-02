@@ -11,21 +11,24 @@ internal sealed class SettingsWindow : Window
     public SettingsWindow(Window owner, Settings settings, HotkeyService hotkeys)
     {
         Ui.Theme(this);
-        Owner = owner; Title = "轻截 · 设置"; Width = 640; Height = 840; MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 40); ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        UseLayoutRounding = true; SnapsToDevicePixels = true;
+        Owner = owner; Title = "轻截 · 设置"; Width = 560; Height = 640; MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 40); ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var shell = new DockPanel(); Content = shell;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(24, 8, 24, 16) }; DockPanel.SetDock(buttons, Dock.Bottom); shell.Children.Add(buttons);
-        var root = new StackPanel { Margin = new Thickness(24, 24, 24, 0) }; shell.Children.Add(new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var page = UiDesign.Padding("PagePadding");
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(page.Left, UiDesign.Number("SpaceS"), page.Right, UiDesign.Number("SpaceL")) }; DockPanel.SetDock(buttons, Dock.Bottom); shell.Children.Add(buttons);
+        var root = new StackPanel { Margin = new Thickness(page.Left, UiDesign.Number("SpaceL"), page.Right, 0) }; shell.Children.Add(new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         var general = UiDesign.Section(root, "通用设置");
-        var folder = Field(general, "保存目录", settings.OutputDirectory);
+        var folder = new TextBox { Text = settings.OutputDirectory };
         var browse = Ui.Button("选择文件夹", () =>
         {
             var picker = new Microsoft.Win32.OpenFolderDialog { Title = "选择截图和视频保存目录", InitialDirectory = Directory.Exists(folder.Text) ? folder.Text : AppContext.BaseDirectory };
             if (picker.ShowDialog(this) == true) folder.Text = picker.FolderName;
-        }); browse.Margin = new Thickness(0, 8, 0, 14); browse.HorizontalAlignment = HorizontalAlignment.Left; general.Children.Add(browse);
-        var shot = HotkeyField(general, "截图快捷键", settings.ScreenshotHotkey, "ScreenshotHotkey");
-        var record = HotkeyField(general, "录屏开始 / 停止快捷键", settings.RecordingHotkey, "RecordingHotkey");
-        var hint = new TextBlock { Text = HotkeyCaptureBox.Instructions, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 8, 0, 0), MinHeight = 34 };
-        hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary"); general.Children.Add(hint);
+        }); PathRow(general, "保存目录", folder, browse);
+        var shortcutRow = Columns(general, 2, 2, 1.2);
+        var shot = HotkeyField(shortcutRow[0], "截图快捷键", settings.ScreenshotHotkey, "ScreenshotHotkey");
+        var record = HotkeyField(shortcutRow[1], "录屏开始 / 停止", settings.RecordingHotkey, "RecordingHotkey");
+        var theme = Choice(shortcutRow[2], "界面风格", new[] { "深色", "浅色" }, settings.Theme == "Light" ? 1 : 0);
+        var hint = UiDesign.Text(HotkeyCaptureBox.Instructions, true); hint.Margin = new Thickness(0, UiDesign.Number("SpaceS"), 0, 0); general.Children.Add(hint);
         shot.HintChanged += text => hint.Text = text;
         record.HintChanged += text => hint.Text = text;
         IDisposable? capture = null;
@@ -36,25 +39,28 @@ internal sealed class SettingsWindow : Window
             else if (record.IsKeyboardFocused) record.CaptureKey(key, modifiers);
         });
         Closed += (_, _) => capture?.Dispose();
-        general.Children.Add(new TextBlock { Text = "界面风格", Margin = new Thickness(0, 12, 0, 6) });
-        var theme = new ComboBox { ItemsSource = new[] { "深色", "浅色" }, SelectedIndex = settings.Theme == "Light" ? 1 : 0 }; general.Children.Add(theme);
         var screenshots = UiDesign.Section(root, "截图设置");
-        var shotFormat = UiDesign.Choice(screenshots, "默认截图格式", Enum.GetValues<ScreenshotFormat>().Select(ImageExportService.Label).ToArray(), (int)settings.ScreenshotFormat); shotFormat.Name = "DefaultScreenshotFormat";
-        var shotQualityLabel = UiDesign.Text($"默认 JPG / WebP 质量：{settings.ScreenshotQuality} / 100"); screenshots.Children.Add(shotQualityLabel);
-        var shotQuality = new Slider { Minimum = 1, Maximum = 100, Value = settings.ScreenshotQuality, IsSnapToTickEnabled = true, TickFrequency = 1, Margin = new Thickness(0, 0, 0, 16), Name = "DefaultScreenshotQuality" }; screenshots.Children.Add(shotQuality);
-        shotQuality.ValueChanged += (_, _) => shotQualityLabel.Text = $"默认 JPG / WebP 质量：{shotQuality.Value:F0} / 100";
-        var snap = new CheckBox { Content = "截图时自动吸附窗口（仍可拖动自由框选）", IsChecked = settings.SnapToWindow, Margin = new Thickness(0, 0, 0, 8) }; screenshots.Children.Add(snap);
+        var shotRow = Columns(screenshots, 1, 1.2);
+        var shotFormat = InlineChoice(shotRow[0], "默认格式", Enum.GetValues<ScreenshotFormat>().Select(ImageExportService.Label).ToArray(), (int)settings.ScreenshotFormat); shotFormat.Name = "DefaultScreenshotFormat";
+        var shotQuality = new Slider { Minimum = 1, Maximum = 100, Value = settings.ScreenshotQuality, IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center, Name = "DefaultScreenshotQuality", ToolTip = "默认 JPG / WebP 质量" };
+        var shotQualityLabel = InlineField(shotRow[1], $"质量 {settings.ScreenshotQuality} / 100", shotQuality);
+        shotQuality.ValueChanged += (_, _) => shotQualityLabel.Text = $"质量 {shotQuality.Value:F0} / 100";
+        var snap = new CheckBox { Content = "截图时自动吸附窗口（仍可拖动自由框选）", IsChecked = settings.SnapToWindow, Margin = new Thickness(0, UiDesign.Number("SpaceS"), 0, 0) }; screenshots.Children.Add(snap);
         var recordings = UiDesign.Section(root, "录屏设置");
-        var recordFormat = UiDesign.Choice(recordings, "默认录屏格式", new[] { "MP4（H.264 + AAC）", "WebM（VP9 + Opus）", "GIF（无声音）" }, (int)settings.RecordingFormat); recordFormat.Name = "DefaultRecordingFormat";
-        var recordQuality = UiDesign.Choice(recordings, "默认录屏质量", new[] { "低", "中", "高" }, (int)settings.RecordingQuality); recordQuality.Name = "DefaultRecordingQuality";
-        var gifRates = new[] { 5, 10, 15, 20, 30 }; var gifFps = UiDesign.Choice(recordings, "默认 GIF 帧率", gifRates.Select(f => $"{f} FPS").ToArray(), Math.Max(0, Array.IndexOf(gifRates, settings.GifFps)));
-        recordings.Children.Add(UiDesign.Text("GIF 不包含声音；帧率和尺寸越高，文件通常越大。", true));
-        var snapRecord = new CheckBox { Content = "区域录屏时自动吸附窗口（仍可拖动自由框选）", IsChecked = settings.SnapRecordingToWindow, Margin = new Thickness(0, 0, 0, 8) }; recordings.Children.Add(snapRecord);
-        var hardware = new CheckBox { Content = "录制时使用硬件编码（失败时可关闭）", IsChecked = settings.HardwareEncoding, Margin = new Thickness(0, 0, 0, 8) }; recordings.Children.Add(hardware);
+        var recordingRow = Columns(recordings, 2.2, 1, 1.35);
+        var recordFormat = InlineChoice(recordingRow[0], "格式", new[] { "MP4（H.264 + AAC）", "WebM（VP9 + Opus）", "GIF（无声音）" }, (int)settings.RecordingFormat); recordFormat.Name = "DefaultRecordingFormat";
+        var recordQuality = InlineChoice(recordingRow[1], "质量", new[] { "低", "中", "高" }, (int)settings.RecordingQuality); recordQuality.Name = "DefaultRecordingQuality";
+        var gifRates = new[] { 5, 10, 15, 20, 30 }; var gifFps = InlineChoice(recordingRow[2], "GIF 帧率", gifRates.Select(f => $"{f} FPS").ToArray(), Math.Max(0, Array.IndexOf(gifRates, settings.GifFps)));
+        var recordingChecks = Columns(recordings, 1, 1);
+        foreach (var cell in recordingChecks) cell.Margin = new Thickness(cell.Margin.Left, UiDesign.Number("SpaceS"), 0, 0);
+        var snapRecord = new CheckBox { Content = "区域录屏自动吸附窗口", ToolTip = "仍可拖动自由框选", IsChecked = settings.SnapRecordingToWindow }; recordingChecks[0].Children.Add(snapRecord);
+        var hardware = new CheckBox { Content = "使用硬件编码", ToolTip = "编码失败时可关闭", IsChecked = settings.HardwareEncoding }; recordingChecks[1].Children.Add(hardware);
+        var gifHint = UiDesign.Text("GIF 不包含声音；帧率和尺寸越高，文件通常越大。", true); gifHint.Margin = new Thickness(0, UiDesign.Number("SpaceS"), 0, 0); recordings.Children.Add(gifHint);
         var tools = UiDesign.Section(root, "媒体工具");
-        var toolsPath = UiDesign.Field(tools, "FFmpeg 工具目录（留空自动检测）", settings.MediaToolsPath);
-        var browseTools = Ui.Button("选择工具目录", () => { var picker = new Microsoft.Win32.OpenFolderDialog { Title = "选择包含 ffmpeg.exe / ffprobe.exe 的目录" }; if (picker.ShowDialog(this) == true) toolsPath.Text = picker.FolderName; }); browseTools.HorizontalAlignment = HorizontalAlignment.Left; tools.Children.Add(browseTools);
-        tools.Children.Add(UiDesign.Text("优先使用指定目录或系统工具；不完整时使用程序附带的 FFmpeg / ffprobe。", true));
+        var toolsPath = new TextBox { Text = settings.MediaToolsPath, ToolTip = "FFmpeg 工具目录，留空自动检测" };
+        var browseTools = Ui.Button("选择目录", () => { var picker = new Microsoft.Win32.OpenFolderDialog { Title = "选择包含 ffmpeg.exe / ffprobe.exe 的目录" }; if (picker.ShowDialog(this) == true) toolsPath.Text = picker.FolderName; }); PathRow(tools, "FFmpeg", toolsPath, browseTools);
+        var toolsHint = UiDesign.Text("工具目录留空自动检测；指定目录或系统工具不完整时使用程序附带的 FFmpeg / ffprobe。", true); toolsHint.Margin = new Thickness(0, UiDesign.Number("SpaceS"), 0, 0); tools.Children.Add(toolsHint);
+        if (root.Children[root.Children.Count - 1] is Border toolsPanel) toolsPanel.Margin = new Thickness(toolsPanel.Margin.Left, toolsPanel.Margin.Top, toolsPanel.Margin.Right, 0);
         buttons.Children.Add(Ui.Button("取消", () => DialogResult = false));
         buttons.Children.Add(Ui.Button("保存设置", () =>
         {
@@ -89,14 +95,42 @@ internal sealed class SettingsWindow : Window
             }
         }));
     }
-    private static TextBox Field(Panel root, string label, string value)
+    private static StackPanel[] Columns(Panel parent, params double[] widths)
     {
-        root.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 5, 0, 5) });
-        var field = new TextBox { Text = value }; root.Children.Add(field); return field;
+        var row = new Grid(); parent.Children.Add(row);
+        var cells = new StackPanel[widths.Length];
+        for (int i = 0; i < widths.Length; i++)
+        {
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(widths[i], GridUnitType.Star) });
+            cells[i] = new StackPanel { Margin = new Thickness(i == 0 ? 0 : UiDesign.Number("SpaceS"), 0, 0, 0) };
+            Grid.SetColumn(cells[i], i); row.Children.Add(cells[i]);
+        }
+        return cells;
+    }
+    private static TextBlock InlineField(Panel parent, string label, FrameworkElement field)
+    {
+        var row = new Grid(); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); row.ColumnDefinitions.Add(new ColumnDefinition());
+        var text = UiDesign.Text(label); text.TextWrapping = TextWrapping.NoWrap; text.VerticalAlignment = VerticalAlignment.Center; text.Margin = new Thickness(0, 0, UiDesign.Number("SpaceS"), 0); row.Children.Add(text);
+        Grid.SetColumn(field, 1); row.Children.Add(field); parent.Children.Add(row); return text;
+    }
+    private static ComboBox InlineChoice(Panel parent, string label, object items, int selected)
+    {
+        var box = new ComboBox { ItemsSource = (System.Collections.IEnumerable)items, SelectedIndex = selected, MinWidth = 0 }; InlineField(parent, label, box); return box;
+    }
+    private static ComboBox Choice(Panel parent, string label, object items, int selected)
+    {
+        parent.Children.Add(UiDesign.Text(label)); var box = new ComboBox { ItemsSource = (System.Collections.IEnumerable)items, SelectedIndex = selected, MinWidth = 0 }; parent.Children.Add(box); return box;
+    }
+    private static void PathRow(Panel parent, string label, TextBox field, Button browse)
+    {
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, UiDesign.Number("SpaceS")) };
+        browse.Margin = new Thickness(UiDesign.Number("SpaceS"), 0, 0, 0); DockPanel.SetDock(browse, Dock.Right); row.Children.Add(browse);
+        var text = UiDesign.Text(label); text.Margin = new Thickness(0, 0, UiDesign.Number("SpaceS"), 0); text.VerticalAlignment = VerticalAlignment.Center; DockPanel.SetDock(text, Dock.Left); row.Children.Add(text);
+        row.Children.Add(field); parent.Children.Add(row);
     }
     private static HotkeyCaptureBox HotkeyField(Panel root, string label, string value, string name)
     {
-        root.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 5, 0, 5) });
+        root.Children.Add(UiDesign.Text(label));
         var field = new HotkeyCaptureBox(value, label) { Name = name }; root.Children.Add(field); return field;
     }
 }

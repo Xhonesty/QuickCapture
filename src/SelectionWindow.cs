@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,6 +29,10 @@ internal sealed class SelectionWindow : Window
     private readonly Action<SelectionWindow, bool>? _modeChanged;
     private readonly IReadOnlyList<WindowTarget> _snapTargets;
     private readonly TextBlock _hint;
+    private readonly Border _hoverPreview = new() { Padding = new Thickness(8), CornerRadius = new CornerRadius(8), IsHitTestVisible = false, Visibility = Visibility.Hidden, Width = 212 };
+    private readonly Image _hoverImage = new() { Width = 194, Height = 110, Stretch = Stretch.Uniform };
+    private readonly TextBlock _hoverTitle = new() { TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 6, 0, 0), FontSize = 12 };
+    private SavedRegion? _previewRegion;
     private SavedRegion? _hoverRegion, _pressedWindow;
     private bool _dragging;
     private Point? _start;
@@ -54,6 +59,8 @@ internal sealed class SelectionWindow : Window
         _size.SetResourceReference(TextBlock.BackgroundProperty, "PanelBackground");
         _size.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
         _canvas.Children.Add(_selection); _canvas.Children.Add(_size);
+        var previewContent = new StackPanel(); previewContent.Children.Add(_hoverImage); previewContent.Children.Add(_hoverTitle); _hoverPreview.Child = previewContent;
+        _hoverPreview.SetResourceReference(Border.BackgroundProperty, "PanelBackground"); _hoverTitle.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary"); _canvas.Children.Add(_hoverPreview);
         _tip = new Border { CornerRadius = new CornerRadius(8), Padding = new Thickness(20, 12, 20, 12), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 28, 0, 0), IsHitTestVisible = false };
         _tip.SetResourceReference(Border.BackgroundProperty, "PanelBackground");
         _hint = new TextBlock { Text = SelectionHint, FontSize = 15 }; _tip.Child = _hint;
@@ -61,7 +68,13 @@ internal sealed class SelectionWindow : Window
         Loaded += (_, _) => { Native.Place(this, screen.Bounds); Activate(); Focus(); UpdateWindowHover(PointFromScreen(new Point(Forms.Cursor.Position.X, Forms.Cursor.Position.Y))); };
         SizeChanged += (_, _) => PositionToolbar();
         Closed += (_, _) => { _closed = true; Editor?.Dispose(); _finish(null); };
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { _finish(null); e.Handled = true; } };
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Handled || e.Key != Key.Escape) return;
+            if (Editor?.EditingText == true) return;
+            if (Editor?.PickingColor == true) { Editor.CancelEyedropper(); e.Handled = true; return; }
+            _finish(null); e.Handled = true;
+        };
         MouseLeftButtonDown += (_, e) =>
         {
             BeginSelection(e.GetPosition(_canvas));
@@ -85,8 +98,18 @@ internal sealed class SelectionWindow : Window
             var dpi = VisualTreeHelper.GetDpi(this); var origin = PointFromScreen(new Point(region.X, region.Y));
             SetSelection(new Rect(origin, new Size(region.Width / dpi.DpiScaleX, region.Height / dpi.DpiScaleY)));
             _size.Text = $"{region.Width} × {region.Height} px";
+            if (_previewRegion != region)
+            {
+                _hoverImage.Source = Crop(region); _previewRegion = region;
+                var target = _snapTargets.FirstOrDefault(t => Drawing.Rectangle.Intersect(t.Bounds, _screen.Bounds) == region.Rectangle);
+                _hoverTitle.Text = target?.Title ?? "窗口预览";
+            }
+            _hoverPreview.Visibility = Visibility.Visible; _hoverPreview.Measure(new Size(212, double.PositiveInfinity));
+            var available = new Rect(8, 8, Math.Max(212, ActualWidth - 16), Math.Max(160, ActualHeight - 16));
+            var location = ToolbarPlacement.Place(SelectionBounds, _hoverPreview.DesiredSize, available);
+            Canvas.SetLeft(_hoverPreview, location.X); Canvas.SetTop(_hoverPreview, location.Y);
         }
-        else { _mask.Selection = null; _selection.Visibility = _size.Visibility = Visibility.Hidden; }
+        else { _mask.Selection = null; _selection.Visibility = _size.Visibility = Visibility.Hidden; _hoverPreview.Visibility = Visibility.Hidden; _hoverImage.Source = null; _previewRegion = null; }
     }
     internal void BeginSelection(Point point)
     {
@@ -99,13 +122,13 @@ internal sealed class SelectionWindow : Window
     {
         if (_start is not { } start) { UpdateWindowHover(point); return; }
         if ((point - start).Length >= 4) _dragging = true;
-        if (_dragging || _pressedWindow == null) Update(point);
+        if (_dragging || _pressedWindow == null) { _hoverPreview.Visibility = Visibility.Hidden; Update(point); }
     }
     internal void FinishSelection(Point point)
     {
         if (_start is not { } start) return;
         var region = !_dragging && (point - start).Length < 4 && _pressedWindow != null ? _pressedWindow : RegionFromPoints(start, point);
-        _start = null; _pressedWindow = null; _hoverRegion = null; ReleaseMouseCapture();
+        _start = null; _pressedWindow = null; _hoverRegion = null; _hoverPreview.Visibility = Visibility.Hidden; ReleaseMouseCapture();
         if (region.Width < 4 || region.Height < 4) { UpdateWindowHover(point); return; }
         if (_recording || _settings == null) _finish(new(region, Crop(region)));
         else BeginEditing(region);
@@ -147,19 +170,22 @@ internal sealed class SelectionWindow : Window
         var origin = PointFromScreen(new Point(region.X, region.Y));
         SetSelection(new Rect(origin, new Size(region.Width / dpi.DpiScaleX, region.Height / dpi.DpiScaleY)));
         _size.Text = $"{region.Width} × {region.Height} px";
-        _tip.Visibility = Visibility.Collapsed; Cursor = Cursors.Arrow;
+        _tip.Visibility = _hoverPreview.Visibility = Visibility.Collapsed; Cursor = Cursors.Arrow;
         Editor = new ScreenshotEditor(this, _image, _settings ?? new Settings(), _saved ?? (_ => { }), () => _finish(null), new Int32Rect(region.X - _screen.Bounds.X, region.Y - _screen.Bounds.Y, region.Width, region.Height));
         // WPF uses DIPs, annotations use source pixels: cancel the monitor scale
         // so the selected image remains at exactly its original screen location.
         Editor.Surface.LayoutTransform = new ScaleTransform(1 / dpi.DpiScaleX, 1 / dpi.DpiScaleY);
         Editor.Handles.LayoutTransform = Editor.Surface.LayoutTransform;
+        Editor.TextOverlay.LayoutTransform = Editor.Surface.LayoutTransform;
         Canvas.SetLeft(Editor.Surface, origin.X); Canvas.SetTop(Editor.Surface, origin.Y);
         _canvas.Children.Insert(0, Editor.Surface);
         _canvas.Children.Add(Editor.Handles);
+        _canvas.Children.Add(Editor.TextOverlay);
         Editor.Surface.CropChanged += UpdateEditingBounds;
         _toolbar = new Border { CornerRadius = UiDesign.Radius, Padding = new Thickness(8), BorderThickness = new Thickness(1), Child = Editor.CreateToolbar(() =>
         { if (Editor!.Surface.Count == 0 || MessageBox.Show(this, "重新框选会清除当前标注。调整大小或位置可使用裁剪手柄并保留标注。仍要重新框选吗？", "重新框选", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) Reselect(); }), Effect = UiDesign.Shadow() };
         _toolbar.SetResourceReference(Border.BackgroundProperty, "PanelBackground"); _toolbar.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        _toolbar.SizeChanged += (_, _) => PositionToolbar();
         _canvas.Children.Add(_toolbar); UpdateEditingBounds(); PositionToolbar();
         Editor.Surface.Focus(); _modeChanged?.Invoke(this, true);
     }
@@ -172,6 +198,7 @@ internal sealed class SelectionWindow : Window
         _size.Text = $"{crop.Width} × {crop.Height} px";
         Canvas.SetLeft(Editor.Surface, origin.X); Canvas.SetTop(Editor.Surface, origin.Y);
         Canvas.SetLeft(Editor.Handles, origin.X); Canvas.SetTop(Editor.Handles, origin.Y);
+        Canvas.SetLeft(Editor.TextOverlay, origin.X); Canvas.SetTop(Editor.TextOverlay, origin.Y);
         PositionToolbar();
     }
     private void PositionToolbar()
@@ -189,7 +216,7 @@ internal sealed class SelectionWindow : Window
     }
     private void RemoveEditor()
     {
-        if (Editor != null) { Editor.Surface.CropChanged -= UpdateEditingBounds; Editor.Dispose(); _canvas.Children.Remove(Editor.Surface); _canvas.Children.Remove(Editor.Handles); Editor = null; }
+        if (Editor != null) { Editor.Surface.CropChanged -= UpdateEditingBounds; Editor.Dispose(); _canvas.Children.Remove(Editor.Surface); _canvas.Children.Remove(Editor.Handles); _canvas.Children.Remove(Editor.TextOverlay); Editor = null; }
         if (_toolbar != null) { _canvas.Children.Remove(_toolbar); _toolbar = null; }
     }
     internal void Reselect()

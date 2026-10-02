@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -21,13 +22,38 @@ internal static class SelfTest
         Paths.TestRoot = directory;
         if (File.Exists(Paths.SettingsFile)) File.Delete(Paths.SettingsFile);
         var results = new List<object>(); int failures = 0;
+        HashSet<string>? passedNames = null;
+        string? recorderRegression = Array.IndexOf(args, "--recorder-regression") >= 0 ? "Window MP4 recording and asynchronous finalization" : null;
+        var recheckNames = args.Where(arg => arg.StartsWith("--recheck=", StringComparison.Ordinal)).Select(arg => arg[10..]).ToHashSet();
+        if (recorderRegression != null) recheckNames.Add(recorderRegression);
+        if (Array.IndexOf(args, "--failed-only") >= 0)
+        {
+            string previousPath = Path.Combine(directory, "results.json");
+            using var previous = JsonDocument.Parse(File.ReadAllText(previousPath));
+            passedNames = previous.RootElement.EnumerateArray().Where(item => item.GetProperty("passed").GetBoolean()).Select(item => item.GetProperty("name").GetString()!).ToHashSet();
+            passedNames.ExceptWith(recheckNames);
+            foreach (var item in previous.RootElement.EnumerateArray().Where(item => item.GetProperty("passed").GetBoolean() && !recheckNames.Contains(item.GetProperty("name").GetString()!))) results.Add(item.Clone());
+        }
         async Task Check(string name, Func<Task> action)
         {
+            if (passedNames?.Contains(name) == true) return;
             try { await action(); results.Add(new { name, passed = true }); }
             catch (Exception ex) { failures++; results.Add(new { name, passed = false, error = ex.ToString() }); }
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
         Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
+        if (Array.IndexOf(args, "--text-only") >= 0) { await InPlaceTextTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--interface-only") >= 0)
+        {
+            await InPlaceTextTests.RunAsync(Check);
+            await RecentFilesTests.RunAsync(Check);
+            await Check("Actual interface screenshots", () => AcceptanceArtifacts.RunDemoAsync());
+            return failures == 0 ? 0 : 1;
+        }
+        if (Array.IndexOf(args, "--annotation-only") >= 0) { await AnnotationUpgradeTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--recording-only") >= 0) { await RecordingUpgradeTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--crop-only") >= 0) { await VideoCropTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--shell-only") >= 0) { await ShellUpgradeTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
         if (Array.IndexOf(args, "--upgrade-only") >= 0 || Array.IndexOf(args, "--media-only") >= 0)
         {
             if (Array.IndexOf(args, "--upgrade-only") >= 0) await UpgradeTests.RunAsync(Check);
@@ -104,6 +130,8 @@ internal static class SelfTest
             var image = await CaptureService.CaptureAsync(new(rect.X + 30, rect.Y + 30, 640, 400));
             string path = Path.Combine(directory, "desktop.png"); if (File.Exists(path)) File.Delete(path); CaptureService.Save(image, path);
             Ensure(image.PixelWidth == 640 && image.PixelHeight == 400, "Screenshot dimensions incorrect");
+            var bytes = UpgradeTests.Bytes(image); int center = ((image.PixelHeight / 2) * image.PixelWidth + image.PixelWidth / 2) * 4;
+            Ensure(bytes[center] == 50 && bytes[center + 1] == 33 && bytes[center + 2] == 22, "Desktop screenshot missed the visible verification scene");
         });
         await Check("Selection overlay physical coordinates at current monitor DPI", async () =>
         {
@@ -128,6 +156,8 @@ internal static class SelfTest
             var image = await RecorderService.CaptureWindowAsync(hwnd, Path.Combine(directory, "window-temp.png"));
             string path = Path.Combine(directory, "window.png"); if (File.Exists(path)) File.Delete(path); CaptureService.Save(image, path);
             Ensure(image.PixelWidth > 100 && image.PixelHeight > 100, "Window screenshot empty");
+            var bytes = UpgradeTests.Bytes(image); int center = ((image.PixelHeight / 2) * image.PixelWidth + image.PixelWidth / 2) * 4;
+            Ensure(bytes[center] == 50 && bytes[center + 1] == 33 && bytes[center + 2] == 22, "Window screenshot missed the source's first rendered frame");
         });
         async Task Record(string name, RecordingSourceBase source, bool audio, bool hardware = false, bool microphone = false)
         {
@@ -174,6 +204,10 @@ internal static class SelfTest
         await UiChangeTests.RunAsync(Check);
         await UpgradeTests.RunAsync(Check);
         await MediaTests.RunAsync(Check);
+        await AnnotationUpgradeTests.RunAsync(Check);
+        await RecordingUpgradeTests.RunAsync(Check);
+        await VideoCropTests.RunAsync(Check);
+        await ShellUpgradeTests.RunAsync(Check);
         File.WriteAllText(Path.Combine(directory, "summary.txt"), $"Failures: {failures}\nCompleted: {DateTime.Now:O}\nSee results.json and rendered artifacts.\n");
         return failures == 0 ? 0 : 1;
     }

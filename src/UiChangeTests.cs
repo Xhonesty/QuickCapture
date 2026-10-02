@@ -134,9 +134,28 @@ internal static class UiChangeTests
     {
         window.UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(window);
-        var rendered = new RenderTargetBitmap((int)Math.Round(window.ActualWidth * dpi.DpiScaleX), (int)Math.Round(window.ActualHeight * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
-        var backdrop = new DrawingVisual(); using (var dc = backdrop.RenderOpen()) dc.DrawRectangle(Window.GetWindow(window)?.Background ?? Brushes.Transparent, null, new Rect(0, 0, window.ActualWidth, window.ActualHeight)); rendered.Render(backdrop);
-        rendered.Render(window);
+        var offset = VisualTreeHelper.GetOffset(window);
+        // A root content element's margin is outside ActualWidth/ActualHeight,
+        // but remains in the visual's offset when rendered from a live window.
+        double width = window.ActualWidth + Math.Max(0, offset.X) + Math.Max(0, window.Margin.Right);
+        double height = window.ActualHeight + Math.Max(0, offset.Y) + Math.Max(0, window.Margin.Bottom);
+        var rendered = new RenderTargetBitmap((int)Math.Round(width * dpi.DpiScaleX), (int)Math.Round(height * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        var bounds = new Rect(0, 0, width, height);
+        var brush = new VisualBrush(window)
+        {
+            ViewboxUnits = BrushMappingMode.Absolute, Viewbox = bounds,
+            ViewportUnits = BrushMappingMode.Absolute, Viewport = bounds,
+            Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top
+        };
+        // Capture the element's local bounds rather than its visual offset in
+        // the parent, so a root margin cannot shift and clip the screenshot.
+        var capture = new DrawingVisual();
+        using (var dc = capture.RenderOpen())
+        {
+            dc.DrawRectangle(Window.GetWindow(window)?.Background ?? Brushes.Transparent, null, bounds);
+            dc.DrawRectangle(brush, null, bounds);
+        }
+        rendered.Render(capture);
         string path = Path.Combine(PreviewDirectory, name); if (File.Exists(path)) File.Delete(path); CaptureService.Save(rendered, path);
     }
     internal static BitmapSource SyntheticDesktop(int width, int height)

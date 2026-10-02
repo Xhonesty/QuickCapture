@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace QuickCapture;
 
-internal sealed record RecordingMetadata(ExportQuality Quality, int Fps, bool HasAudio, double Duration);
+internal sealed record RecordingMetadata(ExportQuality Quality, int Fps, bool HasAudio, double Duration, VideoCrop? Crop = null);
 internal static class RecordingRecovery
 {
     internal static string DirectoryPath => Path.Combine(Paths.Data, "Recordings");

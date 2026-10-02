@@ -15,9 +15,10 @@ internal static class ToolCatalog
     internal static IReadOnlyList<ToolDefinition> Create(ScreenshotEditor editor, Action? reselect) => new ToolDefinition[]
     {
         new("crop", "选择 / 裁剪", "crop", Key.C, () => editor.SelectTool(AnnotationTool.Crop), Tool: AnnotationTool.Crop),
+        new("select", "编辑标注", "scan", Key.E, () => editor.SelectTool(AnnotationTool.Select), Tool: AnnotationTool.Select, AlternativeKeys: "拖动移动 / 手柄缩放 / Delete"),
         new("arrow", "箭头", "move-up-right", Key.A, () => editor.SelectTool(AnnotationTool.Arrow), Tool: AnnotationTool.Arrow),
-        new("rectangle", "矩形", "square", Key.R, () => editor.SelectTool(AnnotationTool.Rectangle), Tool: AnnotationTool.Rectangle),
-        new("text", "文字", "type", Key.T, () => editor.SelectTool(AnnotationTool.Text), Tool: AnnotationTool.Text),
+        new("rectangle", "形状", "square", Key.R, editor.ShowShapes, Tool: AnnotationTool.Rectangle, Options: editor.CreateShapeOptions),
+        new("text", "文字", "type", Key.T, editor.ShowTextOptions, Tool: AnnotationTool.Text, Options: editor.CreateTextOptions),
         new("freehand", "涂鸦", "pencil", Key.B, () => editor.SelectTool(AnnotationTool.Freehand), Tool: AnnotationTool.Freehand, Options: editor.CreateFreehandOptions),
         new("mosaic", "马赛克", "grid-2x2", Key.M, () => editor.SelectTool(AnnotationTool.Mosaic), Tool: AnnotationTool.Mosaic, Options: editor.CreateMosaicOptions),
         new("color", "标注颜色", "palette", Key.K, editor.ShowColors, "options", Options: editor.CreateColorOptions),

@@ -2,10 +2,10 @@
   <!-- Geometry and typography only. ThemeService retains every existing color. -->
   <CornerRadius x:Key="RadiusControl">8</CornerRadius>
   <CornerRadius x:Key="RadiusHandle">2</CornerRadius>
-  <sys:Double x:Key="SpaceXS">4</sys:Double><sys:Double x:Key="SpaceS">8</sys:Double><sys:Double x:Key="SpaceM">12</sys:Double><sys:Double x:Key="SpaceL">16</sys:Double><sys:Double x:Key="SpaceXL">24</sys:Double><sys:Double x:Key="SpaceXXL">32</sys:Double>
-  <Thickness x:Key="PagePadding">24</Thickness><Thickness x:Key="PanelPadding">16</Thickness><Thickness x:Key="PopupPadding">12</Thickness>
-  <sys:Double x:Key="FontAppTitle">30</sys:Double><sys:Double x:Key="FontPageTitle">20</sys:Double><sys:Double x:Key="FontSection">16</sys:Double><sys:Double x:Key="FontBody">14</sys:Double><sys:Double x:Key="FontHelp">12</sys:Double>
-  <sys:Double x:Key="ControlHeight">36</sys:Double><sys:Double x:Key="IconSize">20</sys:Double><sys:Double x:Key="HandleSize">10</sys:Double>
-  <Thickness x:Key="ControlPadding">10,0</Thickness><Thickness x:Key="PanelBorder">1</Thickness>
+  <sys:Double x:Key="SpaceXS">4</sys:Double><sys:Double x:Key="SpaceS">6</sys:Double><sys:Double x:Key="SpaceM">8</sys:Double><sys:Double x:Key="SpaceL">10</sys:Double><sys:Double x:Key="SpaceXL">16</sys:Double><sys:Double x:Key="SpaceXXL">24</sys:Double>
+  <Thickness x:Key="PagePadding">16</Thickness><Thickness x:Key="PanelPadding">10</Thickness><Thickness x:Key="PopupPadding">8</Thickness>
+  <sys:Double x:Key="FontAppTitle">28</sys:Double><sys:Double x:Key="FontPageTitle">18</sys:Double><sys:Double x:Key="FontSection">14</sys:Double><sys:Double x:Key="FontBody">12</sys:Double><sys:Double x:Key="FontHelp">11</sys:Double>
+  <sys:Double x:Key="ControlHeight">32</sys:Double><sys:Double x:Key="IconSize">18</sys:Double><sys:Double x:Key="HandleSize">10</sys:Double>
+  <Thickness x:Key="ControlPadding">8,0</Thickness><Thickness x:Key="PanelBorder">1</Thickness>
   <sys:Double x:Key="ShadowBlur">16</sys:Double><sys:Double x:Key="ShadowDepth">3</sys:Double><sys:Double x:Key="ShadowOpacity">0.25</sys:Double>
 </ResourceDictionary>

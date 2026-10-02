@@ -173,6 +173,10 @@ internal static class HotkeyCaptureTests
 
     internal static async Task PressAsync(Window window, Key key, ModifierKeys modifiers = ModifierKeys.None)
     {
+        // Alt/Win combinations or another application's focus changes can
+        // move the native foreground between gestures. Reacquire only our
+        // explicit test window, then retain the safety check before SendInput.
+        if (GetForegroundWindow() != new WindowInteropHelper(window).Handle) await ActivateAsync(window);
         // Synthetic input is sent only while our own verification window is foreground.
         Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive, $"Verification window is not foreground (foreground={GetForegroundWindow()}, own={new WindowInteropHelper(window).Handle}, active={window.IsActive}); no keys were sent");
         Ensure(Keyboard.Modifiers == ModifierKeys.None, "A physical modifier is held; no keys were sent");

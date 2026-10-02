@@ -24,6 +24,7 @@ internal static class Native
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] internal static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
+    [DllImport("user32.dll")] private static extern bool GetWindowDisplayAffinity(IntPtr hwnd, out uint affinity);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
     [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")] private static extern int DwmBounds(IntPtr hwnd, uint attribute, out RECT value, int size);
@@ -35,7 +36,9 @@ internal static class Native
         var hwnd = new WindowInteropHelper(window).EnsureHandle();
         SetWindowPos(hwnd, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x0040u | (activate ? 0u : 0x0010u));
     }
-    internal static bool ExcludeFromCapture(Window window) => SetWindowDisplayAffinity(new WindowInteropHelper(window).EnsureHandle(), 0x11);
+    internal static bool ExcludeFromCapture(Window window) => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)
+        && SetWindowDisplayAffinity(new WindowInteropHelper(window).EnsureHandle(), 0x11);
+    internal static bool CaptureProtected(IntPtr hwnd) => GetWindowDisplayAffinity(hwnd, out uint affinity) && affinity != 0;
     internal static void MakeClickThrough(Window window)
     {
         var hwnd = new WindowInteropHelper(window).EnsureHandle();
@@ -70,10 +73,14 @@ internal static class Native
         EnumWindows((hwnd, _) =>
         {
             GetWindowThreadProcessId(hwnd, out uint pid);
-            if (pid == Environment.ProcessId || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return true;
+            if (pid == Environment.ProcessId || !IsWindowVisible(hwnd) || DwmFlag(hwnd, 14, out int cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
             var text = new StringBuilder(512); GetWindowText(hwnd, text, text.Capacity);
-            if (text.Length > 0 && GetWindowRect(hwnd, out var r) && r.Right - r.Left > 40 && r.Bottom - r.Top > 40)
-                list.Add(new(hwnd, text.ToString()));
+            if (text.Length > 0 && (IsIconic(hwnd) || GetWindowRect(hwnd, out var r) && r.Right - r.Left > 40 && r.Bottom - r.Top > 40))
+            {
+                string app = "未知应用";
+                try { using var process = Process.GetProcessById((int)pid); app = process.ProcessName; } catch (Exception) { }
+                list.Add(new(hwnd, text.ToString(), app, (int)pid));
+            }
             return true;
         }, IntPtr.Zero);
         return list;
@@ -81,7 +88,7 @@ internal static class Native
     internal static void Open(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 }
 
-internal sealed record WindowItem(IntPtr Handle, string Title)
+internal sealed record WindowItem(IntPtr Handle, string Title, string ApplicationName = "", int ProcessId = 0)
 {
     public override string ToString() => Title;
 }
