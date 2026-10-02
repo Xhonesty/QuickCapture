@@ -30,9 +30,9 @@
 
 ## 获取与运行
 
-源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。目前首页提供源码构建方式；本地生成的 ZIP 不等于已上传的 GitHub Release。
+下载 [v0.6.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.6.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.6.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
 
-使用已有便携包时，解压整个文件夹并运行 `QuickCapture.exe`。自带 .NET 运行时，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
+使用便携包时，解压整个文件夹并运行 `QuickCapture/QuickCapture.exe`。自带 .NET 运行时和 FFmpeg / ffprobe，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
 
 从源码构建需要 Windows x64 与 **.NET 10 SDK**。在 PowerShell 中执行：
 
