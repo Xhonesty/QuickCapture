@@ -42,6 +42,21 @@ internal static class SelfTest
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
         Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
+        if (Array.IndexOf(args, "--preferences-only") >= 0)
+        {
+            await RecordingPreferencesTests.RunAsync(Check);
+            await RecentFilesTests.RunAsync(Check);
+            await PanelOptimizationTests.RunAsync(Check);
+            await Check("Actual optimized panel screenshots", () => AcceptanceArtifacts.RunDemoAsync(panelOnly: true));
+            return failures == 0 ? 0 : 1;
+        }
+        if (Array.IndexOf(args, "--panel-only") >= 0)
+        {
+            await RecentFilesTests.RunAsync(Check);
+            await PanelOptimizationTests.RunAsync(Check);
+            await Check("Actual optimized panel screenshots", () => AcceptanceArtifacts.RunDemoAsync(panelOnly: true));
+            return failures == 0 ? 0 : 1;
+        }
         if (Array.IndexOf(args, "--text-only") >= 0) { await InPlaceTextTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
         if (Array.IndexOf(args, "--interface-only") >= 0)
         {

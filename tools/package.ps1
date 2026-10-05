@@ -1,6 +1,8 @@
+param([string]$SourceDirectory)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$dist = Join-Path $projectRoot 'dist'
+$dist = if ($SourceDirectory) { [IO.Path]::GetFullPath($SourceDirectory, $projectRoot) } else { Join-Path $projectRoot 'dist' }
+if (-not $dist.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Package source must stay inside the QuickCapture project.' }
 $stagingParent = Join-Path $projectRoot 'artifacts\staging'
 # A previous portable copy may have been launched and contain settings/captures.
 # Always stage in a new directory so those files cannot enter the next archive.

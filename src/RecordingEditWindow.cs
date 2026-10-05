@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -28,7 +29,7 @@ internal sealed class RecordingEditWindow : Window
     private bool _cropEditing;
     internal VideoCrop? AppliedCrop => _crop;
     internal TrimTimeline Timeline { get; } = new();
-    private readonly ComboBox _format, _quality, _speed, _gifFps;
+    private readonly ComboBox _format, _quality, _speed, _exportFps;
     private readonly CheckBox _mute = new() { Content = "静音", Margin = new Thickness(8, 0, 0, 0) };
     private readonly TextBox _folder, _filename;
     private readonly TextBlock _rangeLabel, _notice, _toolsNotice, _status;
@@ -39,6 +40,8 @@ internal sealed class RecordingEditWindow : Window
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _exportCancellation;
     private MediaCapabilities _tools = new(null, null, "", "");
+    private readonly System.Collections.Generic.Dictionary<RecordingFormat, int> _formatFps;
+    private bool _changingFps;
     private VideoInfo _info;
     private bool _ready, _exporting, _playing, _opened;
     internal string? SavedPath { get; private set; }
@@ -81,7 +84,9 @@ internal sealed class RecordingEditWindow : Window
         var fpsPanel = new StackPanel(); Grid.SetColumn(fpsPanel, 2); row.Children.Add(fpsPanel);
         _format = UiDesign.Choice(formatPanel, "格式", new[] { "MP4 · H.264 / AAC", "WebM · VP9 / Opus", "GIF · 无声音" }, (int)settings.RecordingFormat); _format.Name = "RecordingFormat";
         _quality = UiDesign.Choice(qualityPanel, "质量", new[] { "低", "中", "高" }, (int)settings.RecordingQuality); _quality.Name = "RecordingQuality";
-        int[] rates = { 5, 10, 15, 20, 30 }; _gifFps = UiDesign.Choice(fpsPanel, "GIF 帧率", new[] { "5 FPS", "10 FPS", "15 FPS", "20 FPS", "30 FPS" }, Math.Max(0, Array.IndexOf(rates, settings.GifFps))); _gifFps.Name = "GifFps";
+        _formatFps = Enum.GetValues<RecordingFormat>().ToDictionary(format => format, settings.GetRecordingFps);
+        var rates = RecordingFrameRates.For(settings.RecordingFormat);
+        _exportFps = UiDesign.Choice(fpsPanel, "导出帧率", rates.Select(fps => $"{fps} FPS").ToArray(), Math.Max(0, Array.IndexOf(rates, settings.GetRecordingFps(settings.RecordingFormat)))); _exportFps.Name = "RecordingFps";
         _notice = UiDesign.Text("", true); _options.Children.Add(_notice);
         var output = UiDesign.Section(root, "保存位置");
         _folder = UiDesign.Field(output, "目录", settings.OutputDirectory); _folder.Name = "RecordingFolder";
@@ -93,7 +98,8 @@ internal sealed class RecordingEditWindow : Window
         _export = Ui.Button("导出并保存", async () => await ExportAsync()); _export.Name = "ExportRecording"; _export.IsEnabled = false; buttons.Children.Add(_export);
         Timeline.RangeChanged += () => { UpdateRange(); if (_ready) Seek(Timeline.Start); };
         Timeline.SeekRequested += Seek;
-        _format.SelectionChanged += (_, _) => { _filename.Text = Path.ChangeExtension(_filename.Text, VideoExportService.Extension(Format)); UpdateOptions(); };
+        _format.SelectionChanged += (_, _) => { _filename.Text = Path.ChangeExtension(_filename.Text, VideoExportService.Extension(Format)); UpdateFpsOptions(); UpdateOptions(); };
+        _exportFps.SelectionChanged += (_, _) => { if (!_changingFps && _exportFps.SelectedIndex >= 0) _formatFps[Format] = RecordingFrameRates.For(Format)[_exportFps.SelectedIndex]; };
         _quality.SelectionChanged += (_, _) => UpdateOptions(); _speed.SelectionChanged += (_, _) => { UpdateRange(); UpdateOptions(); }; _mute.Checked += (_, _) => UpdateOptions(); _mute.Unchecked += (_, _) => UpdateOptions();
         _preview.MediaOpened += (_, _) => { _opened = true; if (_info.Width <= 0 || _info.Height <= 0) _info = _info with { Width = _preview.NaturalVideoWidth, Height = _preview.NaturalVideoHeight }; if (_info.Duration <= 0 && _preview.NaturalDuration.HasTimeSpan) { _info = _info with { Duration = _preview.NaturalDuration.TimeSpan.TotalSeconds }; Timeline.Initialize(_info.Duration, _info.Fps); } _preview.Pause(); LayoutPreview(); UpdateOptions(); };
         _preview.MediaFailed += (_, e) => { _status.Text = "预览不可用：" + e.ErrorException.Message + "。仍可保存原片或使用媒体工具导出。"; _play.IsEnabled = false; };
@@ -137,10 +143,21 @@ internal sealed class RecordingEditWindow : Window
     }
     private void UpdateRange()
     { if (_rangeLabel != null) _rangeLabel.Text = $"起点 {Timeline.Start:F2}s  ·  终点 {Timeline.End:F2}s  ·  选段 {Timeline.End - Timeline.Start:F2}s  ·  导出 {(Timeline.End - Timeline.Start) / (_speed == null ? 1 : Speed):F2}s"; }
+    private void UpdateFpsOptions()
+    {
+        _changingFps = true;
+        try
+        {
+            var rates = RecordingFrameRates.For(Format);
+            _exportFps.ItemsSource = rates.Select(fps => $"{fps} FPS").ToArray();
+            _exportFps.SelectedIndex = Math.Max(0, Array.IndexOf(rates, _formatFps[Format]));
+        }
+        finally { _changingFps = false; }
+    }
     private void UpdateOptions()
     {
         if (_notice == null || _filename == null) return;
-        bool gif = Format == RecordingFormat.Gif; _gifFps.IsEnabled = gif && !_exporting; _mute.IsEnabled = !gif && _tools.CanEdit && !_exporting;
+        bool gif = Format == RecordingFormat.Gif; _exportFps.IsEnabled = _tools.Supports(Format) && !_exporting; _mute.IsEnabled = !gif && _tools.CanEdit && !_exporting;
         _preview.IsMuted = gif || _mute.IsChecked == true; _preview.SpeedRatio = Speed;
         _notice.Text = Format switch { RecordingFormat.Gif => "GIF 不支持声音：导出会丢弃音频。动画体积通常较大；低 / 中质量分别限制宽度为 480 / 720 像素，高质量保留裁剪后的尺寸。", RecordingFormat.WebM => "WebM 使用 VP9 / Opus，播放器兼容性取决于编码支持；导出会重新编码。", _ => "MP4 使用 H.264 / AAC。完整原片、1×、保留声音且质量不变时直接保存；裁剪及其他操作会重新编码。" };
         bool available = _tools.Supports(Format) || Format == RecordingFormat.Mp4;
@@ -207,7 +224,7 @@ internal sealed class RecordingEditWindow : Window
             string name = _filename.Text.Trim(); if (string.IsNullOrEmpty(name) || name != Path.GetFileName(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) throw new ArgumentException("请输入有效的文件名。");
             string target = Path.Combine(Path.GetFullPath(_folder.Text.Trim()), Path.ChangeExtension(name, VideoExportService.Extension(Format)));
             bool overwrite = File.Exists(target); if (overwrite && MessageBox.Show(this, "文件已存在，是否替换？", "保存录屏", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            var request = new VideoExportRequest(_source, target, Format, (ExportQuality)_quality.SelectedIndex, Timeline.Start, Timeline.End, Speed, _mute.IsChecked == true, new[] { 5, 10, 15, 20, 30 }[_gifFps.SelectedIndex], _metadata.Quality, overwrite, _crop);
+            var request = new VideoExportRequest(_source, target, Format, (ExportQuality)_quality.SelectedIndex, Timeline.Start, Timeline.End, Speed, _mute.IsChecked == true, _formatFps[RecordingFormat.Gif], _metadata.Quality, overwrite, _crop, FramesPerSecond: _tools.Supports(Format) ? _formatFps[Format] : null);
             VideoExportService.Validate(request, _info, _tools); Pause(); _exporting = true; _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             _options.IsEnabled = false; Timeline.IsEnabled = _speed.IsEnabled = _folder.IsEnabled = _filename.IsEnabled = _play.IsEnabled = false;
             _cancel.Content = "取消导出"; _status.Text = "正在导出…"; _progress.Value = 0; UpdateOptions();

@@ -13,7 +13,7 @@ namespace QuickCapture;
 // Only the screenshot's subject (a clean note) is generated here.
 internal static class AcceptanceArtifacts
 {
-    internal static async Task RunDemoAsync(bool keepEditorOpen = false)
+    internal static async Task RunDemoAsync(bool keepEditorOpen = false, bool panelOnly = false)
     {
         string? previousRoot = Paths.TestRoot;
         string previousTheme = ThemeService.Current;
@@ -32,7 +32,26 @@ internal static class AcceptanceArtifacts
         {
             main = new MainWindow(); main.Closing += (_, e) => e.Cancel = false;
             main.Show(); await Task.Delay(180); main.UpdateLayout();
-            UiChangeTests.Render(main, "main-recent-files-light.png"); main.Close(); main = null;
+            UiChangeTests.Render(main, "main-recent-files-light.png");
+            if (panelOnly)
+            {
+                var list = (ListBox)main.FindName("RecentList");
+                if (list.ItemContainerGenerator.ContainerFromIndex(0) is ListBoxItem row)
+                {
+                    row.Focus(); main.UpdateLayout(); UiChangeTests.Render(main, "main-file-actions-light.png");
+                }
+                ThemeService.Apply("Dark"); main.UpdateLayout(); UiChangeTests.Render(main, "main-recent-files-dark.png");
+                using var hotkeys = new HotkeyService(new System.Windows.Interop.WindowInteropHelper(main).Handle);
+                var dialog = new SettingsWindow(main, settings, hotkeys);
+                try
+                {
+                    dialog.Show(); await Task.Delay(100); dialog.UpdateLayout(); UiChangeTests.Render(dialog, "settings-panel-dark.png");
+                    ThemeService.Apply("Light"); dialog.UpdateLayout(); UiChangeTests.Render(dialog, "settings-panel-light.png");
+                }
+                finally { dialog.Close(); }
+                return;
+            }
+            main.Close(); main = null;
 
             window = new EditorWindow(NoteImage(900, 540), settings, _ => { }) { Width = 1050, Height = 710 };
             window.Show(); await HotkeyCaptureTests.ActivateAsync(window); window.UpdateLayout();

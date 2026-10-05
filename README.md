@@ -1,6 +1,6 @@
 # 轻截 · QuickCapture
 
-轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.6.0**。
+轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.7.0**。
 
 ## 主要能力
 
@@ -11,9 +11,13 @@
 
 ## 界面预览
 
-<p align="center"><img src="docs/images/main-window.png" width="560" alt="轻截主界面：截图、录屏、最近文件三个卡片及底部状态" /></p>
+<p align="center"><img src="docs/images/main-window.png" width="480" alt="轻截主界面：截图、录屏、最近文件三个卡片及底部状态" /></p>
 
-截图、录屏、最近文件采用统一卡片布局。标题与保存目录位于最近文件卡片内，文件名、时间和大小分层显示；长名称可悬停查看，更多记录仅在列表内部滚动。
+截图、录屏、最近文件采用统一的实色卡片和青绿主色。文件行悬停或键盘聚焦后显示更多操作与打开目录，可将文件移到回收站；更多记录仅在列表内部滚动。主面板默认 480×680 DIP，设置窗口打开时与主窗口的当前宽高完全一致，左上角仅显示“设置”。详见 [界面优化说明](docs/panel-optimization.md)。
+
+<p align="center"><img src="docs/images/settings-light.png" width="360" alt="浅色设置窗口：简洁标题和按录制格式选择帧率" /> <img src="docs/images/settings-dark.png" width="360" alt="深色设置窗口：与主面板相同尺寸，保存和取消固定在底部" /></p>
+
+MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显示对应选项，并即时预览主面板；保存后保留，取消或关闭会恢复。主面板修改帧率也会保存到对应格式。详见 [帧率同步与兼容说明](docs/recording-preferences.md)。
 
 <p align="center"><img src="docs/images/in-place-text.png" width="760" alt="在截图画布上透明输入中文和英文的多行文字预览" /></p>
 
@@ -26,11 +30,11 @@
 3. **录屏**：选择模式及声音选项，点击“开始录屏”，或按录屏快捷键。控制条可以暂停 / 继续、停止；停止后在编辑器调整时间段，点击“画面裁剪”调整范围，再选择速度、格式和质量导出。
 4. **最近文件**：新保存的文件出现在顶部，双击用系统默认程序打开。双击“待导出”录屏可继续编辑，点击“保存目录”打开输出文件夹。关闭主窗口后驻留托盘，双击托盘图标重新显示，右键菜单退出。
 
-默认快捷键为 `Ctrl+Alt+S` / `Ctrl+Alt+R`；首次启动遇到占用时会尝试备用组合，请以主界面实际显示为准。可在“设置”中直接按组合键重新录入。
+新用户默认快捷键为 `Ctrl+Alt+F8` / `Ctrl+Alt+F9`；已有配置保留原组合。首次启动遇到占用时会尝试备用组合，请以主界面实际显示为准。可在“设置”中直接按组合键重新录入。
 
 ## 获取与运行
 
-下载 [v0.6.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.6.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.6.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
+下载 [v0.7.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.7.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.7.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
 
 使用便携包时，解压整个文件夹并运行 `QuickCapture/QuickCapture.exe`。自带 .NET 运行时和 FFmpeg / ffprobe，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
 
@@ -68,11 +72,11 @@ cd QuickCapture
 - 选择对象后可移动、缩放、方向键微调、Delete 删除。文字编辑按一次确认记录一个撤销步骤；空白内容确认不创建新对象，取消已有文字的编辑恢复原内容。
 - 调色盘含预设、最近颜色、HSV、HEX、透明度以及画布 / 屏幕吸管；吸管单击确认，Esc 或右键取消。涂鸦及马赛克按钮悬停打开粗细 / 模式选项，单次笔迹可整体撤销。
 - 保存窗口可临时选择图片格式与质量，不改变默认设置；复制和自动保存沿用默认截图格式，剪贴板同时提供标准位图。
-- 录屏默认为 30 FPS、H.264 / MP4、显示鼠标；可以选择 15 / 30 / 60 FPS。系统声音与麦克风独立勾选，默认均关闭。
+- 录屏默认为 30 FPS、H.264 / MP4、显示鼠标。MP4 与 WebM 各自提供 15 / 30 / 60 FPS，GIF 提供 5 / 10 / 15 / 20 / 30 FPS，默认 15 FPS；三个格式独立保存，设置与主面板同步。系统声音与麦克风独立勾选，默认均关闭。
 - 控制条支持暂停 / 继续，视频和声音同步暂停，暂停期间不增加有效时长；暂停后也可以停止。控制条自动靠近录制目标并避让边缘，也可拖动计时区手动放置。
-- 录屏速度支持 0.5× / 1× / 1.5× / 2×；GIF 没有音轨，并可选择帧率与质量。取消导出保留原片，“待导出”项目可以继续；退出先完成录制，下次再导出。
+- 录屏速度支持 0.5× / 1× / 1.5× / 2×；导出编辑器按格式提供帧率与质量，临时调整不改变录制默认值。GIF 没有音轨。取消导出保留原片，“待导出”项目可以继续；退出先完成录制，下次再导出。
 - 视频“画面裁剪”支持八个手柄、框内移动、自由 / 原始 / 16:9 / 9:16 / 1:1 比例。确认后预览与导出使用同一原始像素范围；裁剪导出成功后仍保留完整母版和已确认配置，可再次调整。
-- 主题切换立即生效并保存。主窗口与设置窗口默认均为 560×640 DIP，主界面最近文件内部滚动；设置保留四组，保存和取消固定在底部。
+- 主面板主题按钮立即切换并保存；设置中的界面风格即时预览并同步主面板，保存后持久化，取消或关闭设置时恢复原主题。设置页与主窗口当前尺寸一致，保留四组；内容可内部滚动，保存和取消固定在底部。
 - 快捷键录入需至少一个修饰键与一个普通按键，支持字母、数字与功能键。Esc 撤销当前录入，Tab / Shift+Tab 切换输入框；保存时检查重复 / 占用，失败保留原来成功注册的组合。
 
 </details>
@@ -144,13 +148,14 @@ cd QuickCapture
 
 ## 集成验证
 
-本次界面调整使用集中验证入口，覆盖原位文字与最近文件，不启动录屏或采集音频：
+本次发布验证设置尺寸、标题、帧率同步、取消 / 保存、旧配置迁移、两主题和所有可选帧率的真实导出，并回归媒体编辑与导出流程：
 
 ```powershell
-.\dist\QuickCapture.exe --self-test --interface-only
+.\dist\QuickCapture.exe --self-test --preferences-only
+.\dist\QuickCapture.exe --self-test --media-only
 ```
 
-诊断结果写入 `dist/Diagnostics/results.json`。本次实际执行结果和边界记录在 [原位文字与最近文件说明](docs/in-place-text.md)。以下为既有完整验证入口，需要普通交互桌面的截图、录屏及相应音频权限：
+诊断结果写入 `dist/Diagnostics/results.json`，每次运行会覆盖前次结果；两组结果分别归档到 `artifacts/preferences-results.json` 与 `artifacts/media-v0.7.0-results.json`。使用生成的测试画面和音轨，不采集桌面录屏或麦克风。本次结果和边界见 [验收记录](docs/verification.md)。以下为既有完整验证入口，需要普通交互桌面的截图、录屏及相应音频权限：
 
 ```powershell
 .\tools\build.ps1 -Offline -Test

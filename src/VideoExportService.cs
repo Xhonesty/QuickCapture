@@ -10,10 +10,10 @@ namespace QuickCapture;
 
 internal sealed record VideoInfo(double Duration, int Width, int Height, double Fps, bool HasAudio, string VideoCodec = "", string AudioCodec = "");
 internal sealed record VideoExportRequest(string Source, string Destination, RecordingFormat Format, ExportQuality Quality,
-    double Start, double End, double Speed = 1, bool Mute = false, int GifFps = 15, ExportQuality SourceQuality = ExportQuality.Medium, bool Overwrite = false, VideoCrop? Crop = null)
+    double Start, double End, double Speed = 1, bool Mute = false, int GifFps = 15, ExportQuality SourceQuality = ExportQuality.Medium, bool Overwrite = false, VideoCrop? Crop = null, int? FramesPerSecond = null)
 {
     internal double OutputDuration => (End - Start) / Speed;
-    internal bool OriginalMp4(VideoInfo info) => Format == RecordingFormat.Mp4 && (Crop == null || Crop.IsFullFrame(info)) && Start <= 0.0001 && End >= info.Duration - 0.0001 && Speed == 1 && !Mute && Quality == SourceQuality && Path.GetExtension(Source).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
+    internal bool OriginalMp4(VideoInfo info) => Format == RecordingFormat.Mp4 && (FramesPerSecond == null || Math.Abs(FramesPerSecond.Value - info.Fps) < 0.001) && (Crop == null || Crop.IsFullFrame(info)) && Start <= 0.0001 && End >= info.Duration - 0.0001 && Speed == 1 && !Mute && Quality == SourceQuality && Path.GetExtension(Source).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
 }
 
 internal static class VideoExportService
@@ -47,6 +47,7 @@ internal static class VideoExportService
         if (!double.IsFinite(request.Start) || !double.IsFinite(request.End) || request.Start < 0 || request.End > info.Duration + 0.001 || request.End < request.Start || (info.Duration > 0 && request.End - request.Start < Math.Min(1 / info.Fps, info.Duration))) throw new ArgumentException("请选择有效的起止时间，至少保留一帧。");
         if (request.Speed is not (0.5 or 1 or 1.5 or 2)) throw new ArgumentException("不支持该倍率。");
         if (request.GifFps < 5 || request.GifFps > 30) throw new ArgumentException("GIF 帧率需为 5–30 FPS。");
+        if (request.FramesPerSecond is int fps && Array.IndexOf(RecordingFrameRates.For(request.Format), fps) < 0) throw new ArgumentException("不支持该格式的导出帧率。");
         request.Crop?.Validate(info);
         if (Path.GetFullPath(request.Source).Equals(Path.GetFullPath(request.Destination), StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("导出目标不能覆盖正在编辑的原始录屏，请使用其他文件名。");
         if (Path.GetExtension(request.Destination).ToLowerInvariant() != "." + Extension(request.Format)) throw new ArgumentException("导出文件扩展名与格式不一致。");
@@ -63,11 +64,12 @@ internal static class VideoExportService
             int inputWidth = request.Crop?.Width ?? info.Width;
             int width = request.Quality == ExportQuality.Low ? 480 : request.Quality == ExportQuality.Medium ? 720 : inputWidth;
             int colors = request.Quality == ExportQuality.Low ? 64 : request.Quality == ExportQuality.Medium ? 128 : 256;
-            video += $",fps={request.GifFps},scale={Math.Min(width, inputWidth)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
+            video += $",fps={request.FramesPerSecond ?? request.GifFps},scale={Math.Min(width, inputWidth)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
             args.AddRange(new[] { "-filter_complex", "[0:v:0]" + video, "-map", "[out]", "-an", "-loop", "0" });
         }
         else
         {
+            if (request.FramesPerSecond is int fps) video += $",fps={fps}";
             bool audio = info.HasAudio && !request.Mute;
             string graph = $"[0:v:0]{video},scale=trunc(iw/2)*2:trunc(ih/2)*2[outv]";
             if (audio) graph += $";[0:a:0]atrim=start={Number(request.Start)}:end={Number(request.End)},asetpts=PTS-STARTPTS,atempo={Number(request.Speed)}[outa]";

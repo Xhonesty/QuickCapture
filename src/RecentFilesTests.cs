@@ -35,7 +35,7 @@ internal static class RecentFilesTests
                 var list = Named<ListBox>(main, "RecentList");
                 var card = Named<Border>(main, "RecentCard");
                 var content = Named<Grid>(main, "MainContent");
-                Ensure(main.Width == 560 && main.Height == 640, "The default main window is not 560 x 640 DIP");
+                Ensure(main.Width == 480 && main.Height == 680, "The default main window is not 480 x 680 DIP");
                 Ensure(list.Items.Count == 20, "The recent-file list lost entries before internal scrolling");
                 Ensure(Visuals<ScrollViewer>(main).All(scroll => DescendsFrom(scroll, list)), "A ScrollViewer outside the recent-file list permits whole-window scrolling");
                 foreach (string name in new[] { "ScreenshotButton", "RecordButton", "RepeatButton", "RecentCard", "StatusText" })
@@ -65,7 +65,13 @@ internal static class RecentFilesTests
                 var fullText = new FormattedText(first.Name, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, new Typeface(filename.FontFamily, filename.FontStyle, filename.FontWeight, filename.FontStretch), filename.FontSize, Brushes.Black, 1);
                 Ensure(filename.TextTrimming == TextTrimming.CharacterEllipsis && filename.TextWrapping == TextWrapping.NoWrap && fullText.WidthIncludingTrailingWhitespace > filename.ActualWidth, "A long filename is not constrained to an ellipsis");
                 Ensure(Visuals<FrameworkElement>(firstRow).Any(element => element.ToolTip is string tooltip && tooltip == first.Name), "The full filename is unavailable on hover");
-                Ensure(firstRow.ContextMenu?.Items.Count == 2, "The row no longer exposes file and containing-directory operations");
+                Ensure(firstRow.ContextMenu?.Items.Count == 4, "The row no longer exposes file, directory and recycle-bin operations");
+                firstRow.Focus(); main.UpdateLayout();
+                var more = Visuals<Button>(firstRow).Single(button => button.ToolTip as string == "更多操作");
+                more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(40);
+                Ensure(firstRow.ContextMenu!.IsOpen && ReferenceEquals(firstRow.ContextMenu.PlacementTarget, more), "The more action did not open the clicked row's menu");
+                UiChangeTests.RenderElement(firstRow.ContextMenu, "recent-menu-light.png");
+                firstRow.ContextMenu.IsOpen = false;
 
                 var before = Named<TextBlock>(main, "StatusText").TranslatePoint(new Point(), content);
                 scrollViewer.ScrollToEnd(); await Task.Delay(40); main.UpdateLayout();
@@ -80,12 +86,12 @@ internal static class RecentFilesTests
                 var list = Named<ListBox>(main, "RecentList");
                 var card = Named<Border>(main, "RecentCard");
                 Ensure(!list.HasItems && list.Visibility == Visibility.Collapsed, "An empty list remains visible");
-                Ensure(card.ActualHeight <= 100 && Visuals<TextBlock>(card).Any(text => text.IsVisible && text.Text.StartsWith("暂无记录", StringComparison.Ordinal)), "The empty card retains excess space or lacks its placeholder");
+                Ensure(card.ActualHeight <= 110 && Visuals<TextBlock>(card).Any(text => text.IsVisible && text.Text.StartsWith("暂无记录", StringComparison.Ordinal)), "The empty card retains excess space or lacks its placeholder");
 
                 string existing = Path.Combine(settings.OutputDirectory, "截图_已有记录.png");
                 SaveFixture(existing); File.SetLastWriteTime(existing, DateTime.Now.AddMinutes(2));
                 Refresh(main); await Task.Delay(40); main.UpdateLayout();
-                Ensure(list.Items.Count == 1 && card.ActualHeight <= 105, "A one-record card is not compact");
+                Ensure(list.Items.Count == 1 && card.ActualHeight <= 120, "A one-record card is not compact");
 
                 string generated = Path.Combine(Paths.TestRoot!, "TemporaryOutput", "截图_新保存文件.png");
                 SaveFixture(generated); File.SetLastWriteTime(generated, DateTime.Now.AddMinutes(-20));

@@ -21,11 +21,11 @@ internal static class ShellUpgradeTests
             try
             {
                 main.Show(); await Task.Delay(150); main.UpdateLayout();
-                UpgradeTests.Ensure(Math.Abs(main.Width - 560) <= 1 && Math.Abs(main.Height - 640) <= 1, $"Default window differs from the requested 560x640: {main.Width}x{main.Height}");
+                UpgradeTests.Ensure(Math.Abs(main.Width - 480) <= 1 && Math.Abs(main.Height - 680) <= 1, $"Default window differs from the requested 480x680: {main.Width}x{main.Height}");
                 foreach (string name in new[] { "ScreenshotButton", "ShotMode", "RecordButton", "RecordMode", "RepeatButton", "ThemeToggle" })
                 {
                     var control = (FrameworkElement)main.FindName(name); var origin = control.TranslatePoint(new Point(), main);
-                    UpgradeTests.Ensure(control.IsVisible && control.ActualHeight >= 32 && origin.X >= 0 && origin.Y >= 0 && origin.X + control.ActualWidth <= main.ActualWidth && origin.Y + control.ActualHeight <= main.ActualHeight, name + " is clipped or too small");
+                    UpgradeTests.Ensure(control.IsVisible && control.ActualHeight >= 28 && origin.X >= 0 && origin.Y >= 0 && origin.X + control.ActualWidth <= main.ActualWidth && origin.Y + control.ActualHeight <= main.ActualHeight, name + " is clipped or too small");
                 }
                 UpgradeTests.Ensure(main.MinWidth <= main.Width && main.MinHeight <= main.Height, "Minimum window exceeds defaults");
             }

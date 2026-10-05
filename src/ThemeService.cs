@@ -7,31 +7,45 @@ namespace QuickCapture;
 internal static class ThemeService
 {
     public static string Current { get; private set; } = "Dark";
+    public static event Action<string>? Changed;
     public static void Apply(string theme)
     {
         Current = theme == "Light" ? "Light" : "Dark";
         bool light = Current == "Light";
         var colors = new (string Key, string Dark, string Light)[]
         {
-            ("WindowBackground", "#12171E", "#F3F6FA"),
-            ("TextPrimary", "#E7EDF4", "#19283A"),
-            ("TextSecondary", "#9CADBF", "#576B81"),
-            ("PanelBackground", "#1B2430", "#FFFFFF"),
-            ("ButtonBackground", "#26313D", "#E6EDF4"),
-            ("InputBackground", "#202935", "#FFFFFF"),
-            ("BorderBrush", "#384859", "#CBD7E3"),
-            ("Accent", "#82E2BB", "#176E57"),
-            ("AccentForeground", "#11251C", "#FFFFFF"),
-            ("BadgeBackground", "#20372E", "#DEEEE7"),
-            ("ListBackground", "#171F29", "#FFFFFF"),
-            ("EditorBackground", "#090D12", "#E4EAF1"),
-            ("SelectionBrush", "#82E2BB", "#46E5B2"),
+            ("WindowBackground", "#141B19", "#F4F7F6"),
+            ("TextPrimary", "#E8F0ED", "#1F2A28"),
+            ("TextSecondary", "#AEBBB7", "#5C6B67"),
+            ("TextMetadata", "#8FA39D", "#6B7A77"),
+            // The supplied light metadata token falls below AA on both surfaces.
+            ("TextHint", "#8FA39D", "#5C6B67"),
+            ("PanelBackground", "#1E2724", "#FFFFFF"),
+            ("ButtonBackground", "#242F2C", "#F1F5F4"),
+            ("HoverBackground", "#242F2C", "#F1F5F4"),
+            ("InputBackground", "#1E2724", "#FFFFFF"),
+            ("BorderBrush", "#2C3835", "#E3E8E6"),
+            ("Accent", "#5DCAA5", "#0F6E56"),
+            ("AccentHover", "#9FE1CB", "#1D9E75"),
+            ("AccentActive", "#9FE1CB", "#085041"),
+            ("AccentForeground", "#04342C", "#FFFFFF"),
+            ("AccentHoverForeground", "#04342C", "#141B19"),
+            ("BadgeBackground", "#1C4A3C", "#E1F5EE"),
+            ("BadgeForeground", "#9FE1CB", "#0F6E56"),
+            ("DisabledForeground", "#5C6B67", "#8A9694"),
+            ("Danger", "#E24B4A", "#A32D2D"),
+            ("DangerText", "#AEBBB7", "#A32D2D"),
+            ("ReadyBrush", "#5DCAA5", "#0F6E56"),
+            ("ListBackground", "#1E2724", "#FFFFFF"),
+            ("EditorBackground", "#141B19", "#F4F7F6"),
+            ("SelectionBrush", "#5DCAA5", "#0F6E56"),
         };
         foreach (var color in colors)
         {
             var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(light ? color.Light : color.Dark));
             brush.Freeze(); Application.Current.Resources[color.Key] = brush;
         }
+        Changed?.Invoke(Current);
     }
     public static Brush Brush(string key) => (Brush)Application.Current.FindResource(key);
 }

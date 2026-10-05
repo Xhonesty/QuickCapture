@@ -1,5 +1,5 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=System.Runtime">
-  <!-- Geometry and typography only. ThemeService retains every existing color. -->
+  <!-- Shared geometry and typography. Theme colors are centralized in ThemeService. -->
   <CornerRadius x:Key="RadiusControl">8</CornerRadius>
   <CornerRadius x:Key="RadiusHandle">2</CornerRadius>
   <sys:Double x:Key="SpaceXS">4</sys:Double><sys:Double x:Key="SpaceS">6</sys:Double><sys:Double x:Key="SpaceM">8</sys:Double><sys:Double x:Key="SpaceL">10</sys:Double><sys:Double x:Key="SpaceXL">16</sys:Double><sys:Double x:Key="SpaceXXL">24</sys:Double>

@@ -79,7 +79,7 @@ internal sealed class RecorderService : IDisposable
                 if (monitor.DeviceName == ds.DeviceName) { width = monitor.Bounds.Width; height = monitor.Bounds.Height; }
         if (width < 2 || height < 2) throw new InvalidOperationException("无法获取录制区域尺寸。");
         options.OutputOptions.OutputFrameSize = new ScreenSize(width - width % 2, height - height % 2);
-        options.VideoEncoderOptions.Framerate = settings.FramesPerSecond;
+        options.VideoEncoderOptions.Framerate = settings.GetRecordingFps(settings.RecordingFormat);
         options.VideoEncoderOptions.Bitrate = settings.RecordingQuality switch { ExportQuality.Low => 4_000_000, ExportQuality.High => 16_000_000, _ => 8_000_000 };
         options.VideoEncoderOptions.IsHardwareEncodingEnabled = settings.HardwareEncoding;
         options.VideoEncoderOptions.IsThrottlingDisabled = false;

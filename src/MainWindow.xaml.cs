@@ -9,6 +9,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using System.Windows.Input;
+using System.Windows.Controls.Primitives;
 using ScreenRecorderLib;
 using Forms = System.Windows.Forms;
 
@@ -26,10 +29,15 @@ public partial class MainWindow : Window
     private bool _busy, _exit, _stopBusy;
     private EditorWindow? _editor;
     private RecordingMetadata? _recordingMetadata;
+    private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private bool _syncingFps;
     public MainWindow()
     {
         ThemeService.Apply(_settings.Theme);
         InitializeComponent();
+        FpsBox.SelectionChanged += Fps_SelectionChanged;
+        ThemeService.Changed += OnThemeChanged;
+        _statusTimer.Tick += (_, _) => UpdateRecordingStatus();
         RecentSectionSlot.SizeChanged += (_, _) => UpdateRecentHeight();
         SourceInitialized += (_, _) =>
         {
@@ -41,8 +49,8 @@ public partial class MainWindow : Window
         _recorder.StateChanged += state => Dispatcher.BeginInvoke(() =>
         {
             _bar?.SetState(state);
-            if (state == RecordingState.Recording) SetStatus("录制中 · 可暂停／继续 · 再按录屏快捷键停止");
-            else if (state == RecordingState.Paused) SetStatus("已暂停 · 画面、声音和计时均已暂停");
+            UpdateRecordingUi();
+            if (state is RecordingState.Recording or RecordingState.Paused) UpdateRecordingStatus();
             else if (state == RecordingState.Stopping) SetStatus("正在结束录制并完成编码…");
         });
         _recorder.Failed += error => Dispatcher.BeginInvoke(() =>
@@ -52,7 +60,7 @@ public partial class MainWindow : Window
             SetStatus(error); Show(); Activate();
         });
         Closing += OnClosing;
-        Closed += (_, _) => { _hotkeys?.Dispose(); _tray?.Dispose(); _icon?.Dispose(); _recorder.Dispose(); };
+        Closed += (_, _) => { ThemeService.Changed -= OnThemeChanged; _statusTimer.Stop(); _hotkeys?.Dispose(); _tray?.Dispose(); _icon?.Dispose(); _recorder.Dispose(); };
     }
     private void ConfigureHotkeys()
     {
@@ -84,10 +92,9 @@ public partial class MainWindow : Window
         SnapWindowBox.IsChecked = _settings.SnapToWindow;
         SnapRecordWindowBox.IsChecked = _settings.SnapRecordingToWindow;
         MicrophoneBox.IsChecked = _settings.Microphone; CursorBox.IsChecked = _settings.Cursor;
-        FpsBox.SelectedIndex = _settings.FramesPerSecond == 15 ? 0 : _settings.FramesPerSecond == 60 ? 2 : 1;
-        ShotKeyLabel.Text = _settings.ScreenshotHotkey; RecordKeyLabel.Text = _settings.RecordingHotkey;
-        RepeatButton.IsEnabled = _settings.LastRegion != null;
-        ThemeToggle.Content = _settings.Theme == "Light" ? "切换深色" : "切换浅色";
+        RestoreRecordingPreferences();
+        ShotKeyLabel.Text = _settings.ScreenshotHotkey.Replace("+", " + "); RecordKeyLabel.Text = _settings.RecordingHotkey.Replace("+", " + ");
+        OnThemeChanged(ThemeService.Current); UpdateRecordingUi();
     }
     private void SaveControls()
     {
@@ -95,8 +102,33 @@ public partial class MainWindow : Window
         _settings.SnapToWindow = SnapWindowBox.IsChecked == true;
         _settings.SnapRecordingToWindow = SnapRecordWindowBox.IsChecked == true;
         _settings.SystemAudio = SystemAudioBox.IsChecked == true; _settings.Microphone = MicrophoneBox.IsChecked == true;
-        _settings.Cursor = CursorBox.IsChecked == true; _settings.FramesPerSecond = new[] { 15, 30, 60 }[Math.Max(0, FpsBox.SelectedIndex)];
+        _settings.Cursor = CursorBox.IsChecked == true;
+        if (FpsBox.SelectedIndex >= 0) _settings.SetRecordingFps(_settings.RecordingFormat, RecordingFrameRates.For(_settings.RecordingFormat)[FpsBox.SelectedIndex]);
         _settings.Save();
+    }
+    internal void PreviewRecordingPreferences(RecordingFormat format, int fps)
+    {
+        _syncingFps = true;
+        try
+        {
+            var rates = RecordingFrameRates.For(format); FpsBox.ItemsSource = null; FpsBox.Items.Clear();
+            FpsBox.ItemsSource = rates.Select(value => $"{value} FPS").ToArray();
+            FpsBox.SelectedIndex = Math.Max(0, Array.IndexOf(rates, fps));
+            FpsBox.ToolTip = $"{RecordingFrameRates.Label(format)} 录制帧率，与设置同步";
+        }
+        finally { _syncingFps = false; }
+    }
+    internal void RestoreRecordingPreferences() => PreviewRecordingPreferences(_settings.RecordingFormat, _settings.GetRecordingFps(_settings.RecordingFormat));
+    private void Fps_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingFps || !IsLoaded || FpsBox.SelectedIndex < 0) return;
+        var old = (_settings.FramesPerSecond, _settings.Mp4Fps, _settings.WebMFps, _settings.GifFps);
+        try { _settings.SetRecordingFps(_settings.RecordingFormat, RecordingFrameRates.For(_settings.RecordingFormat)[FpsBox.SelectedIndex]); _settings.Save(); }
+        catch (Exception ex)
+        {
+            (_settings.FramesPerSecond, _settings.Mp4Fps, _settings.WebMFps, _settings.GifFps) = old;
+            RestoreRecordingPreferences(); Ui.Error(this, ex);
+        }
     }
     private void CreateTray()
     {
@@ -195,7 +227,7 @@ public partial class MainWindow : Window
                 () => _recorder.Elapsed, CaptureTargetBounds, source is DisplayRecordingSource); _bar.Show();
             if (recordingRegion != null) { _frame = new RecordingFrame(recordingRegion); _frame.Show(); }
             UpdateRecordingUi();
-            _recordingMetadata = new(_settings.RecordingQuality, _settings.FramesPerSecond, _settings.SystemAudio || _settings.Microphone, 0);
+            _recordingMetadata = new(_settings.RecordingQuality, _settings.GetRecordingFps(_settings.RecordingFormat), _settings.SystemAudio || _settings.Microphone, 0);
             await _recorder.StartAsync(source, _settings, RecordingRecovery.NewMaster()).WaitAsync(TimeSpan.FromSeconds(20));
             if (_bar.HiddenForCaptureSafety) _tray?.ShowBalloonTip(3500, "轻截 · 录屏控制", "系统无法排除控制条，已隐藏以避免入镜。使用托盘暂停／继续，录屏快捷键停止。", Forms.ToolTipIcon.Info);
             UpdateRecordingUi();
@@ -250,11 +282,24 @@ public partial class MainWindow : Window
     }
     private void UpdateRecordingUi()
     {
-        RecordButton.Content = _recorder.IsBusy ? "停止并保存" : "开始录屏";
+        bool active = _recorder.State is RecordingState.Recording or RecordingState.Paused or RecordingState.Stopping;
+        RecordButtonLabel.Text = _recorder.IsBusy ? "停止录制" : "开始录屏";
+        RecordingDot.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        StatusDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, active ? "Danger" : "ReadyBrush");
+        if (active) { _statusTimer.Start(); UpdateRecordingStatus(); } else _statusTimer.Stop();
         RepeatButton.IsEnabled = !_recorder.IsBusy && _settings.LastRegion != null;
+        ScreenshotButton.IsEnabled = !_recorder.IsBusy;
+        RecordButton.IsEnabled = !_stopBusy && _recorder.State != RecordingState.Starting;
+        RecordMode.IsEnabled = !_recorder.IsBusy;
         SystemAudioBox.IsEnabled = MicrophoneBox.IsEnabled = FpsBox.IsEnabled = CursorBox.IsEnabled = !_recorder.IsBusy;
         SnapRecordWindowBox.IsEnabled = !_recorder.IsBusy;
     }
+    private void UpdateRecordingStatus()
+    {
+        if (_recorder.State is RecordingState.Recording or RecordingState.Paused)
+            SetStatus($"{(_recorder.IsPaused ? "已暂停" : "录制中")} · {_recorder.Elapsed:hh\\:mm\\:ss} · 再按录屏快捷键停止");
+    }
+    private void OnThemeChanged(string theme) => ThemeToggleLabel.Text = theme == "Light" ? "切换深色" : "切换浅色";
     private void RefreshRecent(string? generatedPath = null)
     {
         try
@@ -282,11 +327,14 @@ public partial class MainWindow : Window
     private void UpdateRecentHeight()
     {
         if (!IsLoaded || RecentSectionSlot.ActualHeight <= 0) return;
-        // The header, border and padding occupy 56 DIP. Fit complete 44-DIP rows,
-        // cap at five, and use a compact placeholder when there are no files.
-        double available = Math.Max(0, RecentSectionSlot.ActualHeight - 6);
-        int rows = Math.Min(RecentList.Items.Count, Math.Clamp((int)((available - 56) / 44), 1, 5));
-        RecentCard.Height = Math.Min(available, 56 + (rows == 0 ? 34 : rows * 44));
+        // Use the measured header, so complete rows also fit at fractional DPI.
+        var content = (Grid)RecentCard.Child;
+        double scale = System.Windows.Media.VisualTreeHelper.GetDpi(RecentCard).DpiScaleY;
+        double PixelRound(double value) => Math.Round(value * scale) / scale;
+        double chrome = PixelRound(RecentCard.Padding.Top) + PixelRound(RecentCard.Padding.Bottom) + PixelRound(RecentCard.BorderThickness.Top) + PixelRound(RecentCard.BorderThickness.Bottom) + content.RowDefinitions[0].ActualHeight;
+        double available = Math.Max(0, RecentSectionSlot.ActualHeight - RecentCard.Margin.Bottom);
+        int rows = Math.Min(RecentList.Items.Count, Math.Clamp((int)Math.Floor((available - chrome + 0.1) / 48), 1, 5));
+        RecentCard.Height = Math.Min(available, Math.Ceiling((chrome + (rows == 0 ? 30 : rows * 48)) * scale) / scale);
     }
     private void OpenFolder() { try { Directory.CreateDirectory(_settings.OutputDirectory); Native.Open(_settings.OutputDirectory); } catch (Exception ex) { Ui.Error(this, ex); } }
     private void OnClosing(object? sender, CancelEventArgs e)
@@ -313,7 +361,6 @@ public partial class MainWindow : Window
         {
             _settings.Theme = previous == "Light" ? "Dark" : "Light";
             _settings.Save(); ThemeService.Apply(_settings.Theme);
-            ThemeToggle.Content = _settings.Theme == "Light" ? "切换深色" : "切换浅色";
         }
         catch (Exception ex) { _settings.Theme = previous; Ui.Error(this, ex); }
     }
@@ -330,12 +377,13 @@ public partial class MainWindow : Window
     }
     private void Recent_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        if (e.OriginalSource is DependencyObject clicked && FindParent<Button>(clicked) != null) return;
         if (e.OriginalSource is DependencyObject source && ItemsControl.ContainerFromElement(RecentList, source) is ListBoxItem row && row.DataContext is RecentItem item)
             OpenRecent(item);
     }
     private void Recent_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != System.Windows.Input.Key.Enter || RecentList.SelectedItem is not RecentItem item) return;
+        if (e.Key != System.Windows.Input.Key.Enter || e.OriginalSource is DependencyObject source && FindParent<Button>(source) != null || RecentList.SelectedItem is not RecentItem item) return;
         e.Handled = true; OpenRecent(item);
     }
     private void RecentRow_Loaded(object sender, RoutedEventArgs e)
@@ -344,12 +392,59 @@ public partial class MainWindow : Window
         // Register menu events in code rather than inside the style resource.
         // Read the row's current item when clicked so recycled rows stay correct.
         var menu = new ContextMenu();
+        menu.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("PanelStyles.xaml", UriKind.Relative) });
+        menu.SetResourceReference(ContextMenu.BackgroundProperty, "PanelBackground");
+        menu.SetResourceReference(ContextMenu.ForegroundProperty, "TextSecondary");
+        menu.SetResourceReference(ContextMenu.BorderBrushProperty, "BorderBrush");
         var open = new MenuItem { Header = "打开文件" };
         var folder = new MenuItem { Header = "打开所在目录" };
         open.Click += (_, _) => { if (row.DataContext is RecentItem item) OpenRecent(item); };
         folder.Click += (_, _) => { if (row.DataContext is RecentItem item) OpenRecentFolder(item); };
-        menu.Items.Add(open); menu.Items.Add(folder); row.ContextMenu = menu;
+        var deleteHeader = new StackPanel { Orientation = Orientation.Horizontal };
+        var deleteIcon = new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M 2,4 L 14,4 M 6,4 L 6,2 L 10,2 L 10,4 M 3.5,4 L 4.5,14 L 11.5,14 L 12.5,4 M 6.5,7 L 6.5,11 M 9.5,7 L 9.5,11"), Width = 14, Height = 14, Stretch = System.Windows.Media.Stretch.Uniform, StrokeThickness = 1.5, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round, Margin = new Thickness(0, 0, 6, 0) };
+        deleteIcon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Danger");
+        var deleteText = new TextBlock { Text = "移到回收站" }; deleteText.SetResourceReference(TextBlock.ForegroundProperty, "DangerText");
+        deleteHeader.Children.Add(deleteIcon); deleteHeader.Children.Add(deleteText);
+        var delete = new MenuItem { Header = deleteHeader };
+        delete.SetResourceReference(MenuItem.ForegroundProperty, "Danger");
+        delete.Click += (_, _) => { if (row.DataContext is RecentItem item) DeleteRecent(item); };
+        menu.Items.Add(open); menu.Items.Add(folder); menu.Items.Add(new Separator()); menu.Items.Add(delete); row.ContextMenu = menu;
     }
+    private void RecentMore_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Button button || FindParent<ListBoxItem>(button) is not { } row) return;
+        RecentRow_Loaded(row, e);
+        row.ContextMenu!.PlacementTarget = button; row.ContextMenu.Placement = PlacementMode.Bottom; row.ContextMenu.IsOpen = true;
+    }
+    private void RecentFolder_Click(object sender, RoutedEventArgs e)
+    { e.Handled = true; if (sender is FrameworkElement { DataContext: RecentItem item }) OpenRecentFolder(item); }
+    private void DeleteRecent(RecentItem item)
+    {
+        if (_busy || _recorder.IsBusy) { SetStatus("请先完成当前操作。"); return; }
+        try
+        {
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(item.Path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            if (RecordingRecovery.Owns(item.Path) && File.Exists(item.Path + ".json"))
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(item.Path + ".json", Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            RefreshRecent(); SetStatus($"已移到回收站：{Path.GetFileName(item.Path)}");
+        }
+        catch (Exception ex) { Ui.Error(this, ex); }
+    }
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        for (DependencyObject? current = child; current != null; current = System.Windows.Media.VisualTreeHelper.GetParent(current))
+            if (current is T match) return match;
+        return null;
+    }
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (FindParent<Button>((DependencyObject)e.OriginalSource) != null) return;
+        if (e.ClickCount == 2) Maximize_Click(sender, e); else DragMove();
+    }
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void Maximize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private void OpenRecentFolder(RecentItem item)
     {
         try { Native.Open(Path.GetDirectoryName(item.Path)!); }
