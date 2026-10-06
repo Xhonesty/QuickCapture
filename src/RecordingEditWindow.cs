@@ -30,12 +30,13 @@ internal sealed class RecordingEditWindow : Window
     internal VideoCrop? AppliedCrop => _crop;
     internal TrimTimeline Timeline { get; } = new();
     private readonly ComboBox _format, _quality, _speed, _exportFps;
-    private readonly CheckBox _mute = new() { Content = "静音", Margin = new Thickness(8, 0, 0, 0) };
+    private readonly CheckBox _mute = new() { Content = "静音", Margin = new Thickness(8, 0, 8, 0) };
     private readonly TextBox _folder, _filename;
     private readonly TextBlock _rangeLabel, _notice, _toolsNotice, _status;
     private readonly ProgressBar _progress = new() { Minimum = 0, Maximum = 1, Height = 6, Margin = new Thickness(0, 8, 0, 8) };
     private readonly Button _export, _cancel, _play;
     private readonly StackPanel _options;
+    private readonly WrapPanel _playback;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _exportCancellation;
@@ -49,18 +50,22 @@ internal sealed class RecordingEditWindow : Window
     internal RecordingEditWindow(Window owner, string source, Settings settings, RecordingMetadata metadata)
     {
         Ui.Theme(this); Owner = owner; _source = source; _settings = settings; _metadata = metadata;
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("RecordingEditorStyles.xaml", UriKind.Relative) });
+        UseLayoutRounding = true; SnapsToDevicePixels = true;
         _info = new(metadata.Duration, 0, 0, metadata.Fps, metadata.HasAudio);
-        Title = "轻截 · 录屏编辑与导出"; Width = 880; Height = 930; MinWidth = 680; MinHeight = 500;
-        MaxHeight = Math.Max(500, SystemParameters.WorkArea.Height - 32); WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Title = "录屏编辑与导出"; Width = 880; Height = Math.Min(930, Math.Max(500, SystemParameters.WorkArea.Height - 32)); MinWidth = 680; MinHeight = 500;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var shell = new DockPanel(); Content = shell;
+        RecordingWindowChrome.Install(this, shell);
         var footer = new StackPanel { Margin = new Thickness(24, 8, 24, 16) }; DockPanel.SetDock(footer, Dock.Bottom); shell.Children.Add(footer);
-        var root = new StackPanel { Margin = new Thickness(24, 24, 24, 0) }; shell.Children.Add(new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        footer.SetResourceReference(Panel.BackgroundProperty, "WindowBackground");
+        var root = new StackPanel { Margin = new Thickness(24, 16, 24, 0) }; shell.Children.Add(new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         var title = UiDesign.Text("录屏编辑与导出"); title.FontSize = UiDesign.Number("FontPageTitle"); title.FontWeight = FontWeights.SemiBold; root.Children.Add(title);
         _videoCanvas.Children.Add(_preview); _videoViewport.Children.Add(_videoCanvas); _videoViewport.Children.Add(CropOverlay);
         _videoViewport.SizeChanged += (_, _) => LayoutPreview();
         var previewPanel = UiDesign.Panel(_videoViewport); previewPanel.Padding = new Thickness(0); previewPanel.ClipToBounds = true; root.Children.Add(previewPanel);
         root.Children.Add(Timeline); _rangeLabel = UiDesign.Text("正在读取录屏…", true); root.Children.Add(_rangeLabel);
-        var playback = new WrapPanel { Margin = new Thickness(0, 8, 0, 12) }; root.Children.Add(playback);
+        var playback = _playback = new WrapPanel { Margin = new Thickness(0, 8, 0, 12) }; root.Children.Add(playback);
         _play = Ui.Button("播放选段", TogglePlayback); _play.Name = "PlaySelection"; playback.Children.Add(_play);
         playback.Children.Add(Ui.Button("重置选段", () => { Timeline.SetRange(0, _info.Duration); Seek(0); }));
         _speed = new ComboBox { ItemsSource = new[] { "0.5×", "1×", "1.5×", "2×" }, SelectedIndex = 1, Width = 96, Margin = new Thickness(8, 0, 0, 0), Name = "ExportSpeed", ToolTip = "导出倍率（保留声音时维持音调）" }; playback.Children.Add(_speed); playback.Children.Add(_mute);
@@ -70,6 +75,7 @@ internal sealed class RecordingEditWindow : Window
         _cropRatio = new ComboBox { ItemsSource = new[] { "自由比例", "原始比例", "16:9", "9:16", "1:1" }, SelectedIndex = 0, Width = 120, Name = "VideoCropRatio", ToolTip = "裁剪框比例" }; cropActions.Children.Add(_cropRatio);
         var resetCrop = Ui.Button("重置裁剪", ResetCrop); resetCrop.Name = "ResetVideoCrop"; cropActions.Children.Add(resetCrop);
         var confirmCrop = Ui.Button("确认裁剪", ConfirmCrop); confirmCrop.Name = "ConfirmVideoCrop"; cropActions.Children.Add(confirmCrop);
+        confirmCrop.Style = (Style)FindResource("RecordingPrimaryButton");
         var cancelCrop = Ui.Button("取消裁剪", CancelCrop); cancelCrop.Name = "CancelVideoCrop"; cropActions.Children.Add(cancelCrop);
         _cropPanel.Children.Add(UiDesign.Text("拖动框内移动，拖动边框或手柄缩放。确认后可播放裁剪效果，Esc 取消本次调整。", true));
         _cropLabel = UiDesign.Text("保留完整画面", true); root.Children.Add(_cropLabel);
@@ -96,6 +102,7 @@ internal sealed class RecordingEditWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right }; footer.Children.Add(buttons);
         _cancel = Ui.Button("稍后编辑", () => { if (_exporting) _exportCancellation?.Cancel(); else Close(); }); _cancel.Name = "CancelExport"; buttons.Children.Add(_cancel);
         _export = Ui.Button("导出并保存", async () => await ExportAsync()); _export.Name = "ExportRecording"; _export.IsEnabled = false; buttons.Children.Add(_export);
+        _export.Style = (Style)FindResource("RecordingPrimaryButton");
         Timeline.RangeChanged += () => { UpdateRange(); if (_ready) Seek(Timeline.Start); };
         Timeline.SeekRequested += Seek;
         _format.SelectionChanged += (_, _) => { _filename.Text = Path.ChangeExtension(_filename.Text, VideoExportService.Extension(Format)); UpdateFpsOptions(); UpdateOptions(); };
@@ -164,6 +171,7 @@ internal sealed class RecordingEditWindow : Window
         _quality.IsEnabled = !_exporting && _tools.Supports(Format);
         if (!_tools.Supports(Format) && Format != RecordingFormat.Mp4) _notice.Text += "\n当前缺少对应编码器，请选择 MP4 原片或补齐媒体工具。";
         _cropButton.IsEnabled = _ready && !_exporting && !_cropEditing && _tools.CanEdit && _info.Width >= 2 && _info.Height >= 2;
+        _cropButton.Tag = _cropEditing || _crop != null ? "selected" : null;
         _cropButton.ToolTip = _tools.CanEdit ? "裁剪视频画面；保留原片，可重新调整" : "画面裁剪需要 FFmpeg / ffprobe 媒体工具";
         _cropPanel.IsEnabled = !_exporting;
         _export.IsEnabled = _ready && !_exporting && !_cropEditing && available;
@@ -213,9 +221,9 @@ internal sealed class RecordingEditWindow : Window
         _videoCanvas.Clip = new RectangleGeometry(view);
     }
     private void Seek(double seconds) { if (_opened) _preview.Position = TimeSpan.FromSeconds(Math.Clamp(seconds, 0, _info.Duration)); Timeline.SetPosition(seconds); }
-    private void Pause() { _preview.Pause(); _playing = false; _play.Content = "播放选段"; }
+    private void Pause() { _preview.Pause(); _playing = false; _play.Content = "播放选段"; _play.Tag = null; }
     private void TogglePlayback()
-    { if (!_opened) return; if (_playing) Pause(); else { if (_preview.Position.TotalSeconds < Timeline.Start || _preview.Position.TotalSeconds >= Timeline.End) Seek(Timeline.Start); _preview.SpeedRatio = Speed; _preview.Play(); _playing = true; _play.Content = "暂停预览"; } }
+    { if (!_opened) return; if (_playing) Pause(); else { if (_preview.Position.TotalSeconds < Timeline.Start || _preview.Position.TotalSeconds >= Timeline.End) Seek(Timeline.Start); _preview.SpeedRatio = Speed; _preview.Play(); _playing = true; _play.Content = "暂停预览"; _play.Tag = "selected"; } }
     internal async Task ExportAsync()
     {
         if (!_ready || _exporting || _cropEditing) return;
@@ -226,17 +234,18 @@ internal sealed class RecordingEditWindow : Window
             bool overwrite = File.Exists(target); if (overwrite && MessageBox.Show(this, "文件已存在，是否替换？", "保存录屏", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             var request = new VideoExportRequest(_source, target, Format, (ExportQuality)_quality.SelectedIndex, Timeline.Start, Timeline.End, Speed, _mute.IsChecked == true, _formatFps[RecordingFormat.Gif], _metadata.Quality, overwrite, _crop, FramesPerSecond: _tools.Supports(Format) ? _formatFps[Format] : null);
             VideoExportService.Validate(request, _info, _tools); Pause(); _exporting = true; _exportCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-            _options.IsEnabled = false; Timeline.IsEnabled = _speed.IsEnabled = _folder.IsEnabled = _filename.IsEnabled = _play.IsEnabled = false;
+            _options.IsEnabled = _playback.IsEnabled = false; Timeline.IsEnabled = _speed.IsEnabled = _folder.IsEnabled = _filename.IsEnabled = _play.IsEnabled = false;
+            _status.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             _cancel.Content = "取消导出"; _status.Text = "正在导出…"; _progress.Value = 0; UpdateOptions();
             await VideoExportService.ExportAsync(request, _info, _tools, new Progress<double>(value => _progress.Value = value), _exportCancellation.Token);
             SavedPath = target; _exporting = false; _preview.Close(); DialogResult = true;
         }
         catch (OperationCanceledException) { _status.Text = "已取消导出，原始录屏保留；可调整后重试或稍后编辑。"; }
-        catch (Exception ex) { _status.Text = "导出失败，原始录屏保留。"; Ui.Error(this, ex); }
+        catch (Exception ex) { ErrorLog.Write(ex); _status.Text = "导出失败：" + ex.Message + " 原始录屏保留，可调整后重试。"; _status.SetResourceReference(TextBlock.ForegroundProperty, "Danger"); }
         finally
         {
             _exporting = false; _exportCancellation?.Dispose(); _exportCancellation = null;
-            _options.IsEnabled = _folder.IsEnabled = _filename.IsEnabled = _play.IsEnabled = true; Timeline.IsEnabled = _speed.IsEnabled = _tools.CanEdit; _cancel.Content = "稍后编辑"; UpdateOptions();
+            _options.IsEnabled = _playback.IsEnabled = _folder.IsEnabled = _filename.IsEnabled = _play.IsEnabled = true; Timeline.IsEnabled = _speed.IsEnabled = _tools.CanEdit; _cancel.Content = "稍后编辑"; UpdateOptions();
         }
     }
     private void OnClosing(object? sender, CancelEventArgs e) { if (_exporting) { e.Cancel = true; _exportCancellation?.Cancel(); _status.Text = "正在取消导出…"; } }

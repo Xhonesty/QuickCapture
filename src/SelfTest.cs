@@ -42,6 +42,22 @@ internal static class SelfTest
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
         Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
+        ThemeService.Apply(ThemeService.Current);
+        if (Array.IndexOf(args, "--context-toolbar-only") >= 0)
+        {
+            await ToolbarPreviewTests.RunAsync(Check);
+            await ContextToolbarTests.RunAsync(Check);
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            return failures == 0 ? 0 : 1;
+        }
+        if (Array.IndexOf(args, "--editor-ui-only") >= 0)
+        {
+            await RecordingEditorThemeTests.RunAsync(Check, Array.IndexOf(args, "--pointer") >= 0);
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            return failures == 0 ? 0 : 1;
+        }
         if (Array.IndexOf(args, "--toolbar-only") >= 0)
         {
             await ToolbarPreviewTests.RunAsync(Check);

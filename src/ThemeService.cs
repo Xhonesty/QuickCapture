@@ -43,6 +43,18 @@ internal static class ThemeService
             ("ToolbarSelectedBackground", "#203F5C", "#EAF3FF"),
             ("ToolbarSelectedForeground", "#80BBFF", "#267CF5"),
             ("ToolbarPressedBackground", "#33516A", "#D5E7FD"),
+            ("RecordingButtonBackground", "#303F39", "#DFE8E3"),
+            ("RecordingButtonBorder", "#60736A", "#A7BAB0"),
+            ("RecordingButtonHover", "#40564B", "#C8D9CF"),
+            ("RecordingButtonPressed", "#203E31", "#AFC8BA"),
+            ("RecordingButtonSelected", "#244F3D", "#C2E3D3"),
+            ("RecordingDisabledBackground", "#26312C", "#E5EAE7"),
+            ("RecordingDisabledForeground", "#9AAEA3", "#697A70"),
+            ("RecordingInputBorder", "#60736A", "#A7BAB0"),
+            ("TimelineTrack", "#36463F", "#D4DFD8"),
+            ("ScrollThumb", "#657D71", "#9AAFA2"),
+            ("DangerForeground", "#FFFFFF", "#FFFFFF"),
+            ("PreviewCropAccent", "#5DCAA5", "#5DCAA5"),
         };
         foreach (var color in colors)
         {

@@ -140,8 +140,6 @@ internal sealed class ScreenshotEditor : IDisposable
         AutomationProperties.SetName(_confirmText, "完成文字"); AutomationProperties.SetName(_cancelText, "取消文字");
         foreach (var definition in _definitions.Where(d => d.Options != null && d.Tool != null))
             _toolbar.AddProperties(definition.Tool!.Value, definition.Options!());
-        _toolbar.AddProperties(AnnotationTool.Crop, HintOptions("拖动手柄裁剪 · 方向键 1 px · Shift+方向键 10 px"));
-        _toolbar.AddProperties(AnnotationTool.Select, HintOptions("单击选择标注 · 拖动移动 / 手柄缩放 · Delete 删除"));
         var paletteButton = _toolbar.OptionsFor(AnnotationTool.Rectangle).Children.OfType<Button>().First(b => b.Name == "Property_palette");
         _palette = new ColorPalette(ApplyColor, RefreshColors, ClearFill, StartEyedropper);
         _flyouts["color"] = new HoverToolOptions(paletteButton, _palette, () => { }, hover: false, dismissed: () => _textEditor.Focus());
@@ -209,7 +207,7 @@ internal sealed class ScreenshotEditor : IDisposable
     {
         foreach (var definition in _definitions)
             if (_buttons.TryGetValue(definition.Id, out var button)) button.IsEnabled = !_finishing && definition.CanExecute?.Invoke() != false;
-        if (_confirmText != null && _cancelText != null) _confirmText.Visibility = _cancelText.Visibility = EditingText ? Visibility.Visible : Visibility.Hidden;
+        if (_confirmText != null && _cancelText != null) _confirmText.Visibility = _cancelText.Visibility = EditingText ? Visibility.Visible : Visibility.Collapsed;
     }
     internal void ShowColors()
     {
@@ -224,10 +222,10 @@ internal sealed class ScreenshotEditor : IDisposable
     internal void ShowShapes() { if (Surface.Selected?.Tool != AnnotationTool.Rectangle) SelectTool(AnnotationTool.Rectangle); RefreshColors(); }
     internal void Undo() { CancelText(); CancelStroke(); Surface.Undo(); }
     internal void Redo() { CancelText(); CancelStroke(); Surface.Redo(); }
-    internal void Pin() { if (!FinishText()) return; PinManager.Create(Surface.Export(), _settings, _saved); _complete(); }
+    internal void Pin() { if (!FinishText()) return; HideOptions(); _toolbar?.HideProperties(); PinManager.Create(Surface.Export(), _settings, _saved); _complete(); }
     internal void ExtractText()
     {
-        if (!FinishText()) return; CancelStroke(); HideOptions();
+        if (!FinishText()) return; CancelStroke(); HideOptions(); _toolbar?.HideProperties();
         if (_ocr != null) { _ocr.Activate(); return; }
         _ocr = new OcrWindow(_owner, OcrImage, _settings);
         _ocr.Closed += (_, _) => _ocr = null; _ocr.Show();
@@ -236,7 +234,7 @@ internal sealed class ScreenshotEditor : IDisposable
     {
         var image = new CroppedBitmap(Surface.Original, Surface.CropBounds); image.Freeze(); return image;
     }
-    internal void Complete() { if (EditingText) CancelText(); else _complete(); }
+    internal void Complete() { if (EditingText) CancelText(); else _complete(); HideOptions(); _toolbar?.HideProperties(); }
     public void SelectTool(AnnotationTool tool)
     {
         if (EditingText && tool == AnnotationTool.Text) { ShowTextOptions(); return; }
@@ -399,7 +397,6 @@ internal sealed class ScreenshotEditor : IDisposable
     private static TextBlock OptionLabel(string text) => new() { Text = text, Margin = new Thickness(4, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
     private static ComboBox Choice(System.Collections.IEnumerable values, double width, string tooltip) => new() { Width = width, MinWidth = 0, Height = 30, ToolTip = tooltip, ItemsSource = values, Margin = new Thickness(2, 0, 4, 0), FontSize = 12 };
     private static ComboBox Sizes(int width) { var choice = Choice(new[] { "3 px", "6 px", "12 px", "24 px", "48 px" }, 70, "画笔粗细（原始像素）"); choice.SelectedIndex = Array.IndexOf(BrushSizes, width); return choice; }
-    private static WrapPanel HintOptions(string text) { var row = OptionRow(); row.Children.Add(OptionLabel(text)); return row; }
     private void AddColors(WrapPanel panel, bool compact = false)
     {
         panel.Children.Add(ScreenshotToolbar.Separator());
@@ -599,7 +596,7 @@ internal sealed class ScreenshotEditor : IDisposable
     }
     internal void SaveAndComplete()
     {
-        if (_finishing || !FinishText()) return; _finishing = true; UpdateButtons();
+        if (_finishing || !FinishText()) return; _finishing = true; UpdateButtons(); HideOptions(); _toolbar?.HideProperties();
         try
         {
             var dialog = new ScreenshotSaveWindow(_owner, Surface.Export(), _settings);
@@ -610,7 +607,7 @@ internal sealed class ScreenshotEditor : IDisposable
     }
     internal async Task CopyAndCompleteAsync()
     {
-        if (_finishing || !FinishText()) return; _finishing = true; UpdateButtons();
+        if (_finishing || !FinishText()) return; _finishing = true; UpdateButtons(); HideOptions(); _toolbar?.HideProperties();
         try
         {
             var bitmap = Surface.Export();

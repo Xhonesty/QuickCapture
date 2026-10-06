@@ -64,12 +64,15 @@ internal static class VideoExportService
             int inputWidth = request.Crop?.Width ?? info.Width;
             int width = request.Quality == ExportQuality.Low ? 480 : request.Quality == ExportQuality.Medium ? 720 : inputWidth;
             int colors = request.Quality == ExportQuality.Low ? 64 : request.Quality == ExportQuality.Medium ? 128 : 256;
-            video += $",fps={request.FramesPerSecond ?? request.GifFps},scale={Math.Min(width, inputWidth)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
+            // Older fps filters can repeat the final frame up to the original
+            // trim-end timestamp. Bound the retimed stream before encoding.
+            video += $",fps={request.FramesPerSecond ?? request.GifFps},trim=duration={Number(request.OutputDuration)},scale={Math.Min(width, inputWidth)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
             args.AddRange(new[] { "-filter_complex", "[0:v:0]" + video, "-map", "[out]", "-an", "-loop", "0" });
         }
         else
         {
             if (request.FramesPerSecond is int fps) video += $",fps={fps}";
+            video += $",trim=duration={Number(request.OutputDuration)}";
             bool audio = info.HasAudio && !request.Mute;
             string graph = $"[0:v:0]{video},scale=trunc(iw/2)*2:trunc(ih/2)*2[outv]";
             if (audio) graph += $";[0:a:0]atrim=start={Number(request.Start)}:end={Number(request.End)},asetpts=PTS-STARTPTS,atempo={Number(request.Speed)}[outa]";

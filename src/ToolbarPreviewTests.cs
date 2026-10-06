@@ -18,7 +18,7 @@ internal static class ToolbarPreviewTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> check)
     {
-        await check("Two shared toolbar panels: themes, tool selection, contextual properties and stable layout", async () =>
+        await check("Two shared toolbar panels: themes, contextual visibility and content-sized properties", async () =>
         {
             var owner = new EditorWindow(AcceptanceArtifacts.NoteImage(900, 540), new Settings(), _ => { }) { Width = 1000, Height = 660 };
             try
@@ -26,29 +26,40 @@ internal static class ToolbarPreviewTests
                 owner.Show(); await Task.Delay(100); var editor = owner.Editor; var toolbar = Find<ScreenshotToolbar>(owner).Single();
                 foreach (string theme in new[] { "Light", "Dark" })
                 {
-                    ThemeService.Apply(theme); owner.UpdateLayout(); double height = toolbar.ActualHeight;
+                    ThemeService.Apply(theme); editor.SelectTool(AnnotationTool.Crop); owner.UpdateLayout(); double height = toolbar.ActualHeight;
                     Ensure(toolbar.MainPanel.CornerRadius.TopLeft == 11 && toolbar.PropertyPanel.Margin.Top == 8, "Panels lost their rounded separation");
                     foreach (var tool in new[] { AnnotationTool.Crop, AnnotationTool.Select, AnnotationTool.Arrow, AnnotationTool.Rectangle, AnnotationTool.Text, AnnotationTool.Step, AnnotationTool.Freehand, AnnotationTool.Mosaic })
                     {
                         editor.SelectTool(tool); owner.UpdateLayout();
                         var buttons = toolbar.MainTools.Children.OfType<Button>().Where(b => b.Tag as string == "selected").ToArray();
-                        Ensure(buttons.Length == 1 && editor.Tool == tool && editor.OptionsFor(tool).IsVisible, "Selected tool or relevant property row missing");
-                        Ensure(toolbar.Properties.Children.OfType<WrapPanel>().Count(p => p.IsVisible) == 1, "More than one property row is visible");
-                        Ensure(Math.Abs(toolbar.ActualHeight - height) < .5, "Switching tools shifted the floating panels");
+                        bool options = tool is not (AnnotationTool.Crop or AnnotationTool.Select);
+                        Ensure(buttons.Length == 1 && editor.Tool == tool, "Selected tool missing");
+                        Ensure(toolbar.PropertyPanel.IsVisible == options && toolbar.Properties.Children.OfType<WrapPanel>().Count(p => p.IsVisible) == (options ? 1 : 0), "Contextual properties leaked or disappeared");
+                        Ensure(options ? toolbar.ActualHeight > height : Math.Abs(toolbar.ActualHeight - height) < .5, "Collapsed panel retained placeholder height");
+                        if (options) Ensure(editor.OptionsFor(tool).IsVisible, "Relevant property row missing");
                         Ensure(buttons[0].Foreground == ThemeService.Brush("ToolbarSelectedForeground"), "Selected icon did not follow the theme");
                     }
+                    editor.SelectTool(AnnotationTool.Mosaic); owner.UpdateLayout(); double shortWidth = toolbar.PropertyPanel.ActualWidth;
+                    UiChangeTests.RenderElement(toolbar, "toolbar-short-" + theme.ToLowerInvariant() + ".png");
+                    editor.SelectTool(AnnotationTool.Freehand); owner.UpdateLayout(); double mediumWidth = toolbar.PropertyPanel.ActualWidth;
+                    editor.SelectTool(AnnotationTool.Text); owner.UpdateLayout(); double textWidth = toolbar.PropertyPanel.ActualWidth;
+                    Ensure(shortWidth < mediumWidth && mediumWidth < textWidth, $"Property widths do not follow content: {shortWidth}, {mediumWidth}, {textWidth}");
+                    editor.SelectTool(AnnotationTool.Crop); owner.UpdateLayout(); UiChangeTests.RenderElement(toolbar, "toolbar-hidden-" + theme.ToLowerInvariant() + ".png");
                     editor.SelectShape(AnnotationShape.Ellipse); var row = editor.OptionsFor(AnnotationTool.Rectangle);
                     row.Children.OfType<ComboBox>().Single().SelectedIndex = 2; row.Children.OfType<CheckBox>().Single().IsChecked = true;
                     editor.ApplyColor(Colors.Red); owner.UpdateLayout();
                     UiChangeTests.RenderElement(toolbar, "toolbar-shape-" + theme.ToLowerInvariant() + ".png");
-                    editor.SelectTool(AnnotationTool.Text); editor.BeginText(new Point(60, 90)); editor.TextInput!.Text = "中文与 English\n属性实时预览";
+                    editor.SelectTool(AnnotationTool.Text); owner.UpdateLayout(); double beforeText = toolbar.PropertyPanel.ActualWidth;
+                    editor.BeginText(new Point(60, 90)); editor.TextInput!.Text = "中文与 English\n属性实时预览";
                     editor.SetTextStyle("Microsoft YaHei UI", 32, true, TextAlignment.Center); owner.UpdateLayout();
                     Ensure(editor.TextInput.FontSize == 32 && editor.TextInput.FontWeight == FontWeights.Bold, "Properties lost the text draft");
+                    Ensure(toolbar.PropertyPanel.ActualWidth > beforeText, "Text confirmation controls did not resize the row");
                     UiChangeTests.Render(owner, "toolbar-text-" + theme.ToLowerInvariant() + ".png"); editor.CancelText();
                     Ensure(!editor.ButtonFor("undo").IsEnabled && !editor.ButtonFor("redo").IsEnabled, "Empty history actions are enabled");
                 }
                 owner.Width = 640; owner.UpdateLayout(); editor.SelectTool(AnnotationTool.Text); owner.UpdateLayout();
                 Ensure(toolbar.ActualWidth <= 616 && toolbar.ActualHeight > 90, "Narrow editor did not wrap its controls");
+                Ensure(toolbar.PropertyPanel.ActualWidth < toolbar.MainPanel.ActualWidth - 80, "Narrow properties retained a mostly empty last row");
                 foreach (var button in Find<Button>(toolbar).Where(b => b.IsVisible)) Ensure(Contains(toolbar, button), "Narrow toolbar clips " + button.ToolTip);
                 UiChangeTests.Render(owner, "toolbar-narrow-editor.png");
                 var brush = new Annotation(AnnotationTool.Freehand, new Point(50, 50), new Point(100, 100), Colors.Blue, Points: new[] { new Point(50, 50), new Point(100, 100) }, Width: 24);
@@ -73,12 +84,16 @@ internal static class ToolbarPreviewTests
                     display.Add(new { screen.DeviceName, screen.Bounds, screen.WorkingArea, dpi.DpiScaleX, dpi.DpiScaleY });
                     foreach (var region in new[] { new SavedRegion(work.Left + 12, work.Top + 12, 16, 16, screen.DeviceName), new SavedRegion(work.Right - 32, work.Top + 12, 16, 16, screen.DeviceName), new SavedRegion(work.Right - 220, work.Bottom - 140, 200, 120, screen.DeviceName), new SavedRegion(work.Left + 12, work.Bottom - 32, 16, 16, screen.DeviceName) })
                     {
-                        selection.BeginEditing(region); selection.Editor!.SelectTool(AnnotationTool.Rectangle); selection.UpdateLayout();
+                        selection.BeginEditing(region);
                         var toolbar = Find<ScreenshotToolbar>(selection).Single();
                         var available = new Rect((work.X - screen.Bounds.X) / dpi.DpiScaleX + 8, (work.Y - screen.Bounds.Y) / dpi.DpiScaleY + 8, work.Width / dpi.DpiScaleX - 16, work.Height / dpi.DpiScaleY - 16);
-                        Ensure(available.Contains(selection.ToolbarBounds), "Two-panel toolbar leaves the monitor work area");
-                        Ensure(!selection.ToolbarBounds.IntersectsWith(selection.SelectionBounds), "Toolbar obscures a tiny/edge selection despite free space");
-                        foreach (var button in Find<Button>(toolbar).Where(b => b.IsVisible)) Ensure(Contains(toolbar, button), "Edge toolbar clipped a button");
+                        foreach (var tool in new[] { AnnotationTool.Crop, AnnotationTool.Mosaic, AnnotationTool.Text, AnnotationTool.Rectangle, AnnotationTool.Select })
+                        {
+                            selection.Editor!.SelectTool(tool); selection.UpdateLayout();
+                            Ensure(available.Contains(selection.ToolbarBounds), "Changing properties leaves the monitor work area");
+                            Ensure(!selection.ToolbarBounds.IntersectsWith(selection.SelectionBounds), "Toolbar obscures a tiny/edge selection despite free space");
+                            foreach (var control in Find<Control>(toolbar).Where(b => b.IsVisible && b is Button or ComboBox or CheckBox)) Ensure(Contains(toolbar, control), "Edge toolbar clipped a control");
+                        }
                     }
                     UiChangeTests.Render(selection, "toolbar-edge-" + display.Count + ".png");
                 }

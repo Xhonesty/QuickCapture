@@ -24,13 +24,14 @@ internal sealed class TrimTimeline : Canvas
     {
         Height = 48; MinWidth = 100; Background = Brushes.Transparent;
         _track.CornerRadius = _range.CornerRadius = UiDesign.Radius;
-        _track.SetResourceReference(Border.BackgroundProperty, "InputBackground");
+        _track.SetResourceReference(Border.BackgroundProperty, "TimelineTrack");
         _range.SetResourceReference(Border.BackgroundProperty, "Accent");
         _range.Opacity = 0.45; Children.Add(_track); Children.Add(_range);
         _playhead.SetResourceReference(Shape.FillProperty, "TextPrimary"); Children.Add(_playhead);
         Configure(_left, "TrimStart", "起点：拖动调整；方向键调整一帧，Shift 调整十帧", true);
         Configure(_right, "TrimEnd", "终点：拖动调整；方向键调整一帧，Shift 调整十帧", false);
         SizeChanged += (_, _) => ArrangeTrack();
+        IsEnabledChanged += (_, _) => { _left.Opacity = _right.Opacity = IsEnabled ? 1 : .55; _range.Opacity = IsEnabled ? .45 : .2; };
         MouseLeftButtonDown += (_, e) => { if (e.OriginalSource is not Thumb && _duration > 0) { SeekRequested?.Invoke(Math.Clamp((e.GetPosition(this).X - 8) / Span, 0, 1) * _duration); e.Handled = true; } };
     }
     private double Span => Math.Max(1, ActualWidth - 16);
@@ -40,6 +41,8 @@ internal sealed class TrimTimeline : Canvas
         var frame = new FrameworkElementFactory(typeof(Border)); frame.SetValue(Border.CornerRadiusProperty, UiDesign.Radius);
         frame.SetResourceReference(Border.BackgroundProperty, "PanelBackground"); frame.SetResourceReference(Border.BorderBrushProperty, "Accent"); frame.SetValue(Border.BorderThicknessProperty, new Thickness(2));
         thumb.Template = new ControlTemplate(typeof(Thumb)) { VisualTree = frame }; Children.Add(thumb);
+        thumb.GotKeyboardFocus += (_, _) => thumb.Opacity = .75;
+        thumb.LostKeyboardFocus += (_, _) => thumb.Opacity = IsEnabled ? 1 : .55;
         double anchor = 0, value = 0;
         thumb.DragStarted += (_, _) => { anchor = Mouse.GetPosition(this).X; value = start ? _start : _end; };
         thumb.DragDelta += (_, _) => { double time = value + (Mouse.GetPosition(this).X - anchor) / Span * _duration; if (start) SetRange(time, _end); else SetRange(_start, time); };

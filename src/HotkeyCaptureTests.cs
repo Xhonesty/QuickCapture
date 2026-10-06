@@ -205,7 +205,7 @@ internal static class HotkeyCaptureTests
     internal static async Task DragAsync(Window window, Point start, Point end)
     {
         await ActivateAsync(window);
-        Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive && Keyboard.Modifiers == ModifierKeys.None, "Verification window is not foreground; no pointer input was sent");
+        Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive && Keyboard.Modifiers == ModifierKeys.None, $"Verification window is not foreground (foreground={GetForegroundWindow()}, own={new WindowInteropHelper(window).Handle}, active={window.IsActive}, modifiers={Keyboard.Modifiers}); no pointer input was sent");
         var old = System.Windows.Forms.Cursor.Position;
         void Send(uint flags) { var input = new[] { new INPUT { Type = 0, Data = new INPUTUNION { Mouse = new MOUSEINPUT { Flags = flags } } } }; Ensure(SendInput(1, input, Marshal.SizeOf<INPUT>()) == 1, "Pointer input failed"); }
         try { SetCursorPos((int)Math.Round(start.X), (int)Math.Round(start.Y)); await Task.Delay(50); Send(2); await Task.Delay(60); SetCursorPos((int)Math.Round(end.X), (int)Math.Round(end.Y)); await Task.Delay(80); Send(4); await Task.Delay(80); }
@@ -225,6 +225,15 @@ internal static class HotkeyCaptureTests
             await Task.Delay(120);
         }
         finally { if (control) Send(InputFor(Key.LeftCtrl, true)); SetCursorPos(old.X, old.Y); }
+    }
+    internal static async Task HoldPointerAsync(Window window, Point point, Func<Task> inspect)
+    {
+        await ActivateAsync(window);
+        Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive && Keyboard.Modifiers == ModifierKeys.None, $"Verification window is not foreground (foreground={GetForegroundWindow()}, own={new WindowInteropHelper(window).Handle}, active={window.IsActive}, modifiers={Keyboard.Modifiers}); no pointer input was sent");
+        var old = System.Windows.Forms.Cursor.Position;
+        void Send(uint flags) { var input = new[] { new INPUT { Type = 0, Data = new INPUTUNION { Mouse = new MOUSEINPUT { Flags = flags } } } }; Ensure(SendInput(1, input, Marshal.SizeOf<INPUT>()) == 1, "Pointer input failed"); }
+        try { SetCursorPos((int)Math.Round(point.X), (int)Math.Round(point.Y)); await Task.Delay(80); Send(2); await Task.Delay(80); await inspect(); }
+        finally { Send(4); SetCursorPos(old.X, old.Y); }
     }
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { internal uint Type; internal INPUTUNION Data; }
     [StructLayout(LayoutKind.Explicit)] private struct INPUTUNION { [FieldOffset(0)] internal KEYBDINPUT Keyboard; [FieldOffset(0)] internal MOUSEINPUT Mouse; }

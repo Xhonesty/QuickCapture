@@ -1,6 +1,6 @@
 # 轻截 · QuickCapture
 
-轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.9.0**。
+轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.10.0**。
 
 ## 主要能力
 
@@ -11,7 +11,19 @@
 - **录屏与导出**：区域、窗口、显示器录制；暂停 / 继续，系统声音与麦克风；时间裁切、画面裁剪、变速、静音，导出 MP4 / WebM / GIF。
 - **文件与日常操作**：截图支持 PNG / JPG / WebP / BMP，复制、自动保存、置顶贴图；最近文件、保存目录、全局快捷键、托盘和浅色 / 深色主题。
 
-## 本轮截图工具栏与文件预览
+## 本轮录屏编辑与截图属性栏
+
+录屏编辑窗口完整跟随应用的浅色 / 深色主题，已经打开的窗口也会即时更新。次要按钮采用有边框的灰绿色实色背景，确认裁剪与导出使用青绿主色，普通、悬停、按下、选中、键盘焦点与禁用有明确区别。标题栏左侧留空，内容区标题保留，右侧仍可最小化、最大化 / 还原与关闭；原生标题栏和边缘命中区域保留拖动及调整尺寸。
+
+截图第二层仅为带选项的工具或选中对象显示；裁剪、空白选择、复制、保存与取消时完全收起，不留空面板或高度。每个属性栏按实际可见内容决定宽度，文字确认按钮只在输入期间占位；切换工具、开始 / 完成文字都会重新测量，窄屏自动换行并避让屏幕边缘。原位文字控件不会因测量而重建，中文组合保护、对象修改与撤销重做继续沿用。另修复旧版 FFmpeg 在截取后改变帧率时补出尾帧造成的音视频时长差异。
+
+<p align="center"><img src="docs/images/editor-ready-light.png" width="450" alt="浅色录屏编辑器与清晰的灰绿色按钮" /> <img src="docs/images/editor-ready-dark.png" width="450" alt="深色录屏编辑器与青绿导出按钮" /></p>
+
+<p align="center"><img src="docs/images/toolbar-hidden-light.png" width="780" alt="无可调选项时只显示主工具栏" /><br/><img src="docs/images/toolbar-short-light.png" width="780" alt="马赛克工具显示紧凑属性面板" /></p>
+
+实现与验收边界见 [录屏主题与按需属性栏](docs/recording-editor-and-context-toolbar.md) 和 [验收记录](docs/verification.md)。真实桌面输入在本轮运行环境被前台窗口检查阻止；窗口状态、原生命中区域、主题渲染和导出使用真实 WPF 窗口验证，按钮悬停 / 按下的图件使用 WPF 状态模拟。系统输入法候选窗和混合 DPI 多屏仍需复测。
+
+## 截图工具栏与文件预览
 
 截图采用两层浮动圆角面板，主栏按绘制、编辑和输出分组，属性栏随工具或选中的标注显示设置；常用色块、调色盘和吸管可直接操作。两种主题共用布局，窄窗口自动换行，选区边缘自动避让。最近文件左侧显示真实图片或视频首帧，保留原行高和操作；透明图片显示棋盘格，视频带播放标记。详见 [工具栏与预览说明](docs/toolbar-and-previews.md)。
 
@@ -19,7 +31,7 @@
 
 <p align="center"><img src="docs/images/recent-previews-light.png" width="360" alt="最近文件真实图片预览" /> <img src="docs/images/recent-previews-dark.png" width="360" alt="深色最近文件预览与格式回退图标" /></p>
 
-## 本轮办公功能
+## 办公功能
 
 截图后按 `O` 提取文字，可直接修改并复制；按 `D` 连续添加步骤编号，按 `E` 选中后移动、缩放或删除，双击修改数字。编号面板可设置下一个数字，删除不会重排。贴图按 `P`，滚轮缩放、`Ctrl+滚轮` 调整透明度，右键打开菜单。开启穿透后，从托盘选择 **解除全部贴图穿透并恢复**。
 
@@ -52,7 +64,7 @@ MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显
 
 ## 获取与运行
 
-下载 [v0.9.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.9.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.9.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
+下载 [v0.10.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.10.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.10.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
 
 使用便携包时，解压整个文件夹并运行 `QuickCapture/QuickCapture.exe`。自带 .NET 运行时和 FFmpeg / ffprobe，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
 
@@ -165,6 +177,7 @@ python tools/setup-ocr.py
 | `CropHandles.cs` / `ToolCatalog.cs` / `IconSet.cs` | 二次裁剪、配置驱动图标与工具快捷键 |
 | `ImageExportService.cs` / `ScreenshotSaveWindow.cs` | 四种图片格式、质量及剪贴板兼容性 |
 | `RecordingEditWindow.cs` / `TrimTimeline.cs` | 录屏预览、时间段与导出交互 |
+| `RecordingEditorStyles.xaml` / `RecordingWindowChrome.cs` | 录屏按钮状态、动态主题与简洁窗口标题栏 |
 | `RecordingBar.cs` / `VideoCrop.cs` / `VideoCropOverlay.cs` | 暂停控制条、原始像素画面裁剪与比例交互 |
 | `WindowPicker.cs` | 实时窗口缩略图、目标选择与预览 |
 | `MediaTools.cs` / `VideoExportService.cs` / `RecordingRecovery.cs` | 依赖检测、转换、取消及母版恢复 |
@@ -178,7 +191,14 @@ v0.9.0 工具栏与缩略图专项覆盖两主题、窄窗口、小选区与屏�
 .\dist\QuickCapture.exe --self-test --toolbar-only
 ```
 
-本次 20 / 20 项通过，结果归档到 `artifacts/toolbar-preview-results.json`，实际显示器记录在 `artifacts/toolbar-displays.json`。具体环境与未验证范围见 [验收记录](docs/verification.md)。
+以上保留 v0.9.0 的 20 / 20 历史记录，归档于 `artifacts/toolbar-preview-results.json`。v0.10.0 运行以下新增专项：
+
+```powershell
+.\dist\QuickCapture.exe --self-test --editor-ui-only
+.\dist\QuickCapture.exe --self-test --context-toolbar-only
+```
+
+本轮录屏主题 4/4、截图上下文 6/6 通过，归档于 `artifacts/editor-ui-results.json`、`context-toolbar-results.json`；媒体专项 9/10 通过，真实时间轴拖动被前台保护阻止。两种主题、原生命中区域与窗口控制命令、按需属性宽度、文字组合事件、裁剪确认 / 取消及真实视频导出已检查。完整工具栏原生输入、系统输入法候选窗及外部剪贴板接收仍需可交互桌面复测，详见 [验收记录](docs/verification.md)。
 
 v0.8.0 增加办公功能专项入口，自动验证结果与边界见 [验收记录](docs/verification.md)：
 

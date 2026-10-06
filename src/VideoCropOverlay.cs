@@ -60,8 +60,10 @@ internal sealed class VideoCropOverlay : FrameworkElement
         dc.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
         var shade = new GeometryGroup { FillRule = FillRule.EvenOdd }; shade.Children.Add(new RectangleGeometry(picture)); shade.Children.Add(new RectangleGeometry(crop));
         dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(165, 0, 0, 0)), null, shade);
-        var accent = TryFindResource("Accent") as Brush ?? Brushes.DodgerBlue;
-        dc.DrawRectangle(null, new Pen(Brushes.Black, 3), crop); dc.DrawRectangle(null, new Pen(accent, 1.5), crop);
+        var accent = ThemeService.Brush("PreviewCropAccent");
+        dc.DrawRectangle(null, new Pen(Brushes.Black, 5), crop);
+        dc.DrawRectangle(null, new Pen(Brushes.White, 3), crop);
+        dc.DrawRectangle(null, new Pen(accent, 1.5), crop);
         foreach (var (x, y) in Handles)
         {
             Point p = new(crop.Left + (x + 1) * crop.Width / 2, crop.Top + (y + 1) * crop.Height / 2);
