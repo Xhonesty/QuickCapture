@@ -39,6 +39,10 @@ internal static class ThemeService
             ("ListBackground", "#1E2724", "#FFFFFF"),
             ("EditorBackground", "#141B19", "#F4F7F6"),
             ("SelectionBrush", "#5DCAA5", "#0F6E56"),
+            ("ToolbarBackground", "#222A28", "#FFFFFF"),
+            ("ToolbarSelectedBackground", "#203F5C", "#EAF3FF"),
+            ("ToolbarSelectedForeground", "#80BBFF", "#267CF5"),
+            ("ToolbarPressedBackground", "#33516A", "#D5E7FD"),
         };
         foreach (var color in colors)
         {

@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style x:Key="ScreenshotToolButton" TargetType="Button">
+    <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="MinHeight" Value="0"/>
+    <Setter Property="Margin" Value="1,0"/><Setter Property="Padding" Value="4"/><Setter Property="Focusable" Value="False"/>
+    <Setter Property="Cursor" Value="Hand"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+      <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource ToolbarSelectedForeground}" BorderThickness="0" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="Tag" Value="selected"><Setter Property="Foreground" Value="{DynamicResource ToolbarSelectedForeground}"/><Setter TargetName="Surface" Property="Background" Value="{DynamicResource ToolbarSelectedBackground}"/></Trigger>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource HoverBackground}"/></Trigger>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property="Tag" Value="selected"/><Condition Property="IsMouseOver" Value="True"/></MultiTrigger.Conditions><Setter TargetName="Surface" Property="Background" Value="{DynamicResource ToolbarSelectedBackground}"/><Setter TargetName="Surface" Property="BorderThickness" Value="1"/></MultiTrigger>
+        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource ToolbarPressedBackground}"/></Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderThickness" Value="1"/></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource DisabledForeground}"/><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+</ResourceDictionary>

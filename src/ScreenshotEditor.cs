@@ -22,7 +22,10 @@ internal sealed class ScreenshotEditor : IDisposable
     private readonly bool _inputMethodEnabled;
     private readonly Dictionary<AnnotationTool, Button> _toolButtons = new();
     private readonly List<Point> _points = new();
-    private readonly Dictionary<AnnotationTool, HoverToolOptions> _options = new();
+    private ScreenshotToolbar? _toolbar;
+    private readonly List<(Color Color, Border Swatch)> _swatches = new();
+    private readonly List<Border> _customColorMarkers = new();
+    private readonly Dictionary<AnnotationTool, ComboBox> _brushControls = new();
     private readonly Dictionary<string, HoverToolOptions> _flyouts = new();
     private ComboBox? _mosaicMode, _mosaicSize;
     private TextBlock? _mosaicSizeLabel;
@@ -45,7 +48,6 @@ internal sealed class ScreenshotEditor : IDisposable
     private AnnotationShape _shape = AnnotationShape.Rectangle;
     private int _shapeWidth = 3;
     private ColorPalette? _palette;
-    private Border? _colorIndicator;
     private ComboBox? _shapeSizes;
     private CheckBox? _filled;
     private bool _syncingOptions;
@@ -110,49 +112,40 @@ internal sealed class ScreenshotEditor : IDisposable
         _owner.PreviewKeyDown += KeyDown;
         _owner.Deactivated += OwnerDeactivated;
     }
-    public WrapPanel CreateToolbar(Action? reselect = null)
+    public ScreenshotToolbar CreateToolbar(Action? reselect = null)
     {
-        var panel = new WrapPanel(); _definitions = ToolCatalog.Create(this, reselect);
+        _toolbar = new ScreenshotToolbar(); var panel = _toolbar.MainTools;
+        _definitions = ToolCatalog.Create(this, reselect);
         string previousGroup = "";
         foreach (var definition in _definitions)
         {
+            if (definition.Id == "color") continue; // K and the property-row palette share the same action.
             if (definition.Id == "reselect" && reselect == null) continue;
             if (previousGroup != "" && previousGroup != definition.Group)
             {
-                var separator = new Border { Width = 1, Height = 24, Margin = new Thickness(4, 6, 8, 6) }; separator.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); panel.Children.Add(separator);
+                panel.Children.Add(ScreenshotToolbar.Separator());
             }
             previousGroup = definition.Group;
-            var button = Ui.Button("", () => { if (definition.CanExecute?.Invoke() != false) definition.Execute(); });
-            button.Content = IconSet.Create(definition.Icon); button.Width = button.Height = UiDesign.Number("ControlHeight"); button.Padding = new Thickness(0); button.Margin = new Thickness(0, 0, 4, 0);
-            if (definition.Id == "color")
-            {
-                // Show the applied color on the toolbar without replacing its icon.
-                var icon = (UIElement)button.Content; button.Content = null;
-                var grid = new Grid(); grid.Children.Add(icon);
-                _colorIndicator = new Border { Width = 17, Height = 3, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 3), CornerRadius = new CornerRadius(1) };
-                grid.Children.Add(_colorIndicator); button.Content = new Viewbox { Width = UiDesign.Number("IconSize") + 4, Height = UiDesign.Number("IconSize") + 4, Child = grid, IsHitTestVisible = false };
-            }
+            var button = ScreenshotToolbar.IconButton(definition.Icon, definition.Name,
+                () => { if (definition.CanExecute?.Invoke() != false) definition.Execute(); }, definition.Options != null);
             button.Name = "Tool_" + definition.Id; AutomationProperties.SetAutomationId(button, button.Name); AutomationProperties.SetName(button, definition.Name);
             button.ToolTip = $"{definition.Name} ({definition.Shortcut}{(definition.AlternativeKeys == "" ? "" : " / " + definition.AlternativeKeys)})";
             ToolTipService.SetPlacement(button, PlacementMode.Top); _buttons[definition.Id] = button;
             if (definition.Tool is { } tool) _toolButtons[tool] = button;
             panel.Children.Add(button);
         }
-        foreach (var definition in _definitions.Where(d => d.Options != null))
-        {
-            var flyout = new HoverToolOptions(_buttons[definition.Id], definition.Options!(), () =>
-            { foreach (var (id, other) in _flyouts) if (id != definition.Id) other.Hide(); }, hover: definition.Id is not ("color" or "text" or "step"), dismissed: () => _textEditor.Focus());
-            _flyouts[definition.Id] = flyout; if (definition.Tool is { } tool) _options[tool] = flyout;
-        }
         _confirmText = Ui.Button("完成文字", ConfirmText); _cancelText = Ui.Button("取消文字", CancelText);
         _confirmText.Focusable = _cancelText.Focusable = false;
+        foreach (var action in new[] { _confirmText, _cancelText }) { action.Height = 30; action.Padding = new Thickness(6, 0, 6, 0); action.Margin = new Thickness(2, 0, 0, 0); action.FontSize = 11; }
         AutomationProperties.SetName(_confirmText, "完成文字"); AutomationProperties.SetName(_cancelText, "取消文字");
-        panel.Children.Add(_confirmText); panel.Children.Add(_cancelText);
-        SelectTool(Tool); UpdateButtons(); RefreshColors(); return panel;
-    }
-    internal StackPanel CreateColorOptions()
-    {
-        _palette = new ColorPalette(ApplyColor, RefreshColors, ClearFill, StartEyedropper); RefreshColors(); return _palette;
+        foreach (var definition in _definitions.Where(d => d.Options != null && d.Tool != null))
+            _toolbar.AddProperties(definition.Tool!.Value, definition.Options!());
+        _toolbar.AddProperties(AnnotationTool.Crop, HintOptions("拖动手柄裁剪 · 方向键 1 px · Shift+方向键 10 px"));
+        _toolbar.AddProperties(AnnotationTool.Select, HintOptions("单击选择标注 · 拖动移动 / 手柄缩放 · Delete 删除"));
+        var paletteButton = _toolbar.OptionsFor(AnnotationTool.Rectangle).Children.OfType<Button>().First(b => b.Name == "Property_palette");
+        _palette = new ColorPalette(ApplyColor, RefreshColors, ClearFill, StartEyedropper);
+        _flyouts["color"] = new HoverToolOptions(paletteButton, _palette, () => { }, hover: false, dismissed: () => _textEditor.Focus());
+        SelectTool(Tool); UpdateButtons(); RefreshColors(); return _toolbar;
     }
     private bool CanEditFill => Surface.Selected is { Tool: AnnotationTool.Rectangle } || Surface.Selected == null && Tool == AnnotationTool.Rectangle;
     internal void ApplyColor(Color color)
@@ -184,14 +177,28 @@ internal sealed class ScreenshotEditor : IDisposable
         bool fill = _palette?.EditingFill == true && CanEditFill;
         Color color = fill ? CurrentFill ?? CurrentColor : CurrentColor;
         _palette?.SetCurrent(color, CanEditFill, CurrentFill != null);
-        if (_colorIndicator != null) _colorIndicator.Background = new SolidColorBrush(color);
-        if (_buttons.TryGetValue("color", out var button)) button.ToolTip = $"标注颜色 (K) · {(fill ? "填充" : "描边 / 画笔")} {AnnotationColors.Hex(color)}";
+        foreach (var (value, swatch) in _swatches)
+        {
+            swatch.BorderThickness = new Thickness(value == color ? 2 : 1);
+            swatch.SetResourceReference(Border.BorderBrushProperty, value == color ? "ToolbarSelectedForeground" : "BorderBrush");
+        }
+        foreach (var marker in _customColorMarkers) marker.Background = new SolidColorBrush(color);
         if (_shapeSizes != null && _filled != null)
         {
             _syncingOptions = true; _shapeSizes.SelectedIndex = Array.IndexOf(BrushSizes, (int)(Surface.Selected?.Width ?? _shapeWidth)); _filled.IsChecked = CurrentFill != null; _syncingOptions = false;
         }
+        _syncingOptions = true;
+        foreach (var (tool, sizes) in _brushControls)
+            sizes.SelectedIndex = Array.IndexOf(BrushSizes, (int)(Surface.Selected?.Tool == tool ? Surface.Selected.Width : tool == AnnotationTool.Arrow ? _arrowWidth : _freehandWidth));
+        if (Surface.Selected?.Tool is AnnotationTool.Mosaic or AnnotationTool.MosaicBrush && _mosaicMode != null && _mosaicSize != null)
+        {
+            _mosaicMode.SelectedIndex = Surface.Selected.Tool == AnnotationTool.MosaicBrush ? 1 : 0;
+            _mosaicSize.SelectedIndex = Array.IndexOf(BrushSizes, (int)Surface.Selected.Width);
+        }
+        _syncingOptions = false;
         var currentShape = Surface.Selected is { Tool: AnnotationTool.Rectangle } item ? item.Shape : _shape;
-        foreach (var (value, choice) in _shapeButtons) choice.SetResourceReference(Control.BackgroundProperty, value == currentShape ? "Accent" : "ButtonBackground");
+        foreach (var (value, choice) in _shapeButtons) ScreenshotToolbar.Selected(choice, value == currentShape);
+        _toolbar?.ShowProperties(EditingText ? AnnotationTool.Text : Tool == AnnotationTool.Select ? Surface.Selected?.Tool switch { AnnotationTool.MosaicBrush => AnnotationTool.Mosaic, { } selectedTool => selectedTool, _ => AnnotationTool.Select } : Tool);
     }
     internal void StartEyedropper(bool screen)
     {
@@ -202,10 +209,19 @@ internal sealed class ScreenshotEditor : IDisposable
     {
         foreach (var definition in _definitions)
             if (_buttons.TryGetValue(definition.Id, out var button)) button.IsEnabled = !_finishing && definition.CanExecute?.Invoke() != false;
-        if (_confirmText != null && _cancelText != null) _confirmText.Visibility = _cancelText.Visibility = EditingText ? Visibility.Visible : Visibility.Collapsed;
+        if (_confirmText != null && _cancelText != null) _confirmText.Visibility = _cancelText.Visibility = EditingText ? Visibility.Visible : Visibility.Hidden;
     }
-    internal void ShowColors() { RefreshColors(); if (_flyouts.TryGetValue("color", out var colors)) colors.Show(); }
-    internal void ShowShapes() { if (Surface.Selected?.Tool != AnnotationTool.Rectangle) SelectTool(AnnotationTool.Rectangle); if (_flyouts.TryGetValue("rectangle", out var shapes)) shapes.Show(); }
+    internal void ShowColors()
+    {
+        RefreshColors();
+        if (_flyouts.TryGetValue("color", out var colors))
+        {
+            var row = _toolbar!.Properties.Children.OfType<WrapPanel>().FirstOrDefault(p => p.Visibility == Visibility.Visible);
+            colors.Popup.PlacementTarget = row?.Children.OfType<Button>().FirstOrDefault(b => b.Name == "Property_palette") ?? ButtonFor("rectangle");
+            colors.Show();
+        }
+    }
+    internal void ShowShapes() { if (Surface.Selected?.Tool != AnnotationTool.Rectangle) SelectTool(AnnotationTool.Rectangle); RefreshColors(); }
     internal void Undo() { CancelText(); CancelStroke(); Surface.Undo(); }
     internal void Redo() { CancelText(); CancelStroke(); Surface.Redo(); }
     internal void Pin() { if (!FinishText()) return; PinManager.Create(Surface.Export(), _settings, _saved); _complete(); }
@@ -231,10 +247,9 @@ internal sealed class ScreenshotEditor : IDisposable
         Tool = tool; Surface.Cursor = tool is AnnotationTool.Crop or AnnotationTool.Select ? Cursors.SizeAll : Cursors.Cross;
         foreach (var (key, button) in _toolButtons)
         {
-            button.SetResourceReference(Control.BackgroundProperty, key == tool ? "Accent" : "ButtonBackground");
-            button.SetResourceReference(Control.ForegroundProperty, key == tool ? "AccentForeground" : "TextPrimary");
+            ScreenshotToolbar.Selected(button, key == tool);
         }
-        foreach (var (key, options) in _options) if (key != tool) options.Hide();
+        HideOptions();
         RefreshColors();
         ToolChanged?.Invoke();
     }
@@ -259,26 +274,24 @@ internal sealed class ScreenshotEditor : IDisposable
     internal void ShowTextOptions()
     {
         if (!EditingText && Surface.Selected?.Tool != AnnotationTool.Text && Tool != AnnotationTool.Text) SelectTool(AnnotationTool.Text);
-        SyncTextOptions(); if (_flyouts.TryGetValue("text", out var options)) options.Show();
+        SyncTextOptions(); _toolbar?.ShowProperties(AnnotationTool.Text);
     }
-    internal StackPanel CreateTextOptions()
+    internal WrapPanel CreateTextOptions()
     {
-        var panel = new StackPanel { Width = 220 };
-        panel.Children.Add(OptionLabel("字体与字号 · 原始像素"));
-        _textFonts = new ComboBox { ItemsSource = new[] { "Microsoft YaHei UI", "SimSun", "Segoe UI", "Arial", "Consolas" }, ToolTip = "字体", SelectedIndex = 0, Margin = new Thickness(0, 0, 0, 7) };
-        _textSizes = new ComboBox { ItemsSource = new double[] { 12, 16, 20, 24, 28, 32, 40, 48, 64, 72, 96, 144 }, ToolTip = "字号（原始像素）", SelectedItem = 24d, Margin = new Thickness(0, 0, 0, 7) };
-        _textWeight = new CheckBox { Content = "粗体", Margin = new Thickness(0, 0, 0, 7) };
-        _textAlignments = new ComboBox { ItemsSource = new[] { "左对齐", "居中", "右对齐" }, SelectedIndex = 0, ToolTip = "文字对齐", Margin = new Thickness(0, 0, 0, 7) };
+        var panel = OptionRow();
+        _textFonts = Choice(new[] { "Microsoft YaHei UI", "SimSun", "Segoe UI", "Arial", "Consolas" }, 146, "字体");
+        _textFonts.SelectedIndex = 0;
+        _textSizes = Choice(new double[] { 12, 16, 20, 24, 28, 32, 40, 48, 64, 72, 96, 144 }, 64, "字号（原始像素）"); _textSizes.SelectedItem = 24d;
+        _textWeight = new CheckBox { Content = "粗体", ToolTip = "粗体", Margin = new Thickness(6, 0, 8, 0) };
+        _textAlignments = Choice(new[] { "左对齐", "居中", "右对齐" }, 84, "文字对齐"); _textAlignments.SelectedIndex = 0;
         panel.Children.Add(_textFonts); panel.Children.Add(_textSizes); panel.Children.Add(_textWeight); panel.Children.Add(_textAlignments);
-        void Apply() { if (_syncingText) return; SetTextStyle(_textFonts.SelectedItem as string ?? _textFamily, _textSizes.SelectedItem is double size ? size : _textSize, _textWeight.IsChecked == true, (TextAlignment)new[] { TextAlignment.Left, TextAlignment.Center, TextAlignment.Right }[Math.Max(0, _textAlignments.SelectedIndex)]); }
+        void Apply() { if (_syncingText) return; SetTextStyle(_textFonts.SelectedItem as string ?? _textFamily, _textSizes.SelectedItem is double size ? size : _textSize, _textWeight.IsChecked == true, new[] { TextAlignment.Left, TextAlignment.Center, TextAlignment.Right }[Math.Max(0, _textAlignments.SelectedIndex)]); }
         _textFonts.SelectionChanged += (_, _) => Apply(); _textSizes.SelectionChanged += (_, _) => Apply();
         _textWeight.Checked += (_, _) => Apply(); _textWeight.Unchecked += (_, _) => Apply(); _textAlignments.SelectionChanged += (_, _) => Apply();
         _textFonts.DropDownClosed += (_, _) => _textEditor.Focus(); _textSizes.DropDownClosed += (_, _) => _textEditor.Focus(); _textAlignments.DropDownClosed += (_, _) => _textEditor.Focus();
         _textWeight.Click += (_, _) => _textEditor.Focus();
-        panel.Children.Add(Ui.Button("文字颜色 / 吸管", ShowColors));
-        panel.Children.Add(OptionLabel("Enter 换行 · Ctrl+Enter 完成\nEsc 取消本次编辑 · 双击文字重编"));
-        panel.PreviewKeyDown += KeyDown;
-        SyncTextOptions(); return panel;
+        AddColors(panel, compact: true); panel.Children.Add(_confirmText!); panel.Children.Add(_cancelText!);
+        panel.PreviewKeyDown += KeyDown; SyncTextOptions(); return panel;
     }
     private void SyncTextOptions()
     {
@@ -312,13 +325,12 @@ internal sealed class ScreenshotEditor : IDisposable
     internal void ShowStepOptions()
     {
         if (Surface.Selected?.Tool != AnnotationTool.Step) SelectTool(AnnotationTool.Step);
-        SyncStepOptions(); if (_flyouts.TryGetValue("step", out var options)) options.Show();
+        SyncStepOptions(); _toolbar?.ShowProperties(AnnotationTool.Step);
     }
-    internal StackPanel CreateStepOptions()
+    internal WrapPanel CreateStepOptions()
     {
-        var panel = new StackPanel { Width = 220 };
-        panel.Children.Add(OptionLabel("步骤编号 · 连续单击添加"));
-        _stepSizes = new ComboBox { Name = "StepSize", ItemsSource = new[] { 16, 24, 32, 40, 48, 64, 96, 128, 160 }, SelectedItem = _settings.StepSize, ToolTip = "编号直径（原始像素）", Margin = new Thickness(0, 0, 0, 8) }; panel.Children.Add(_stepSizes);
+        var panel = OptionRow(); panel.Children.Add(OptionLabel("直径"));
+        _stepSizes = Choice(new[] { 16, 24, 32, 40, 48, 64, 96, 128, 160 }, 64, "编号直径（原始像素）"); _stepSizes.Name = "StepSize"; _stepSizes.SelectedItem = _settings.StepSize; panel.Children.Add(_stepSizes);
         _stepSizes.SelectionChanged += (_, _) =>
         {
             if (_syncingStep || _stepSizes.SelectedItem is not int size) return;
@@ -331,15 +343,16 @@ internal sealed class ScreenshotEditor : IDisposable
             }
             _settings.Save();
         };
-        panel.Children.Add(OptionLabel("选中编号的数字"));
-        _stepValue = new TextBox { Name = "StepNumber", ToolTip = "选中编号的新数字", Margin = new Thickness(0, 0, 0, 6) }; panel.Children.Add(_stepValue);
-        _applyStep = Ui.Button("修改选中数字", () => { try { SetStepNumber(ParseStep(_stepValue.Text)); } catch (Exception ex) { Ui.Error(_owner, ex); } }); panel.Children.Add(_applyStep);
-        panel.Children.Add(OptionLabel("下一个编号 / 重置起始数字"));
-        _stepStart = new TextBox { Name = "StepStart", Margin = new Thickness(0, 0, 0, 6) }; panel.Children.Add(_stepStart);
-        panel.Children.Add(Ui.Button("设置起始数字", () => { try { ResetStepStart(ParseStep(_stepStart.Text)); } catch (Exception ex) { Ui.Error(_owner, ex); } }));
-        panel.Children.Add(Ui.Button("编号颜色 / 吸管", ShowColors));
-        panel.Children.Add(OptionLabel("E 移动 / 缩放 · Delete 删除\n双击编号修改数字 · 删除不重排"));
-        SyncStepOptions(); return panel;
+        _stepValue = NumberInput("StepNumber", "选中编号的新数字"); panel.Children.Add(_stepValue);
+        _applyStep = PropertyAction("修改选中数字", () => { try { SetStepNumber(ParseStep(_stepValue.Text)); } catch (Exception ex) { Ui.Error(_owner, ex); } }); panel.Children.Add(_applyStep);
+        panel.Children.Add(OptionLabel("下一个")); _stepStart = NumberInput("StepStart", "下一个编号 / 重置起始数字"); panel.Children.Add(_stepStart);
+        panel.Children.Add(PropertyAction("设置起始数字", () => { try { ResetStepStart(ParseStep(_stepStart.Text)); } catch (Exception ex) { Ui.Error(_owner, ex); } }));
+        AddColors(panel); SyncStepOptions(); return panel;
+    }
+    private static TextBox NumberInput(string name, string tooltip) => new() { Name = name, ToolTip = tooltip, Width = 50, MinHeight = 0, Height = 30, Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(2, 0, 4, 0) };
+    private static Button PropertyAction(string name, Action action)
+    {
+        var button = Ui.Button(name, action); button.Height = 30; button.FontSize = 11; button.Padding = new Thickness(6, 0, 6, 0); button.Margin = new Thickness(2, 0, 4, 0); return button;
     }
     private static int ParseStep(string text) => int.TryParse(text, out int value) && value is >= 1 and <= 9999 ? value : throw new ArgumentException("请输入 1–9999 的整数。");
     private void SyncStepOptions()
@@ -353,66 +366,91 @@ internal sealed class ScreenshotEditor : IDisposable
         _stepSizes.SelectedItem = selected != null ? (int)Math.Round(AnnotationGeometry.Bounds(selected).Width) : _settings.StepSize;
         _syncingStep = false;
     }
-    internal StackPanel CreateShapeOptions()
+    internal WrapPanel CreateShapeOptions()
     {
-        var panel = new StackPanel { Width = 205 }; panel.Children.Add(OptionLabel("形状 · Shift 等比例"));
-        var choices = new WrapPanel(); panel.Children.Add(choices);
+        var panel = OptionRow();
         foreach (var (shape, name) in new[] { (AnnotationShape.Rectangle, "矩形"), (AnnotationShape.RoundedRectangle, "圆角矩形"), (AnnotationShape.Ellipse, "椭圆 / 圆"), (AnnotationShape.Triangle, "三角形"), (AnnotationShape.Diamond, "菱形") })
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            var path = new System.Windows.Shapes.Path { Data = AnnotationGeometry.Shape(shape, new Rect(0, 0, 18, 16)), Width = 20, Height = 18, StrokeThickness = 1.7, Margin = new Thickness(0, 0, 7, 0), Stretch = Stretch.Uniform }; path.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "TextPrimary");
-            row.Children.Add(path); row.Children.Add(new TextBlock { Text = name });
-            var choice = Ui.Button("", () => SelectShape(shape)); choice.Content = row; choice.ToolTip = name; choice.Width = 200; choice.Margin = new Thickness(0, 0, 0, 3); choices.Children.Add(choice); _shapeButtons[shape] = choice;
+            var path = new System.Windows.Shapes.Path { Data = AnnotationGeometry.Shape(shape, new Rect(0, 0, 18, 16)), Width = 20, Height = 18, StrokeThickness = 1.7, Stretch = Stretch.Uniform };
+            var choice = ScreenshotToolbar.IconButton("square", name + " · Shift 等比例", () => SelectShape(shape));
+            path.SetBinding(System.Windows.Shapes.Shape.StrokeProperty, new System.Windows.Data.Binding("Foreground") { Source = choice });
+            choice.Content = path; panel.Children.Add(choice); _shapeButtons[shape] = choice;
         }
-        panel.Children.Add(OptionLabel("描边粗细")); _shapeSizes = Sizes(_shapeWidth); panel.Children.Add(_shapeSizes);
+        panel.Children.Add(ScreenshotToolbar.Separator());
+        _filled = new CheckBox { Content = "填充", Margin = new Thickness(2, 0, 8, 0) }; panel.Children.Add(_filled);
+        _filled.Checked += (_, _) => { if (_syncingOptions) return; _fillColor ??= _color; if (Surface.Selected is { Tool: AnnotationTool.Rectangle } selected) Surface.SetSelected(selected with { FillColor = _fillColor }); RefreshColors(); };
+        _filled.Unchecked += (_, _) => { if (!_syncingOptions) ClearFill(); };
+        panel.Children.Add(OptionLabel("描边")); _shapeSizes = Sizes(_shapeWidth); panel.Children.Add(_shapeSizes);
         _shapeSizes.SelectionChanged += (_, _) =>
         {
             if (_syncingOptions || _shapeSizes.SelectedIndex < 0) return; _shapeWidth = BrushSizes[_shapeSizes.SelectedIndex];
             if (Surface.Selected is { Tool: AnnotationTool.Rectangle } selected) Surface.SetSelected(selected with { Width = _shapeWidth });
         };
-        _filled = new CheckBox { Content = "颜色填充", Margin = new Thickness(0, 7, 0, 7) }; panel.Children.Add(_filled);
-        _filled.Checked += (_, _) => { if (_syncingOptions) return; _fillColor ??= _color; if (Surface.Selected is { Tool: AnnotationTool.Rectangle } selected) Surface.SetSelected(selected with { FillColor = _fillColor }); RefreshColors(); };
-        _filled.Unchecked += (_, _) => { if (!_syncingOptions) ClearFill(); };
-        panel.Children.Add(Ui.Button("描边 / 填充调色盘", ShowColors)); return panel;
+        AddColors(panel); return panel;
     }
     internal void SelectShape(AnnotationShape shape)
     {
         _shape = shape;
         if (Surface.Selected is { Tool: AnnotationTool.Rectangle } selected) Surface.SetSelected(selected with { Shape = shape });
         else SelectTool(AnnotationTool.Rectangle);
-        foreach (var (value, button) in _shapeButtons) button.SetResourceReference(Control.BackgroundProperty, value == shape ? "Accent" : "ButtonBackground");
         RefreshColors();
     }
-    private static TextBlock OptionLabel(string text) => new() { Text = text, Margin = new Thickness(0, 0, 0, 8), FontSize = UiDesign.Number("FontHelp") };
-    private static ComboBox Sizes(int width) => new() { Width = 180, ToolTip = "画笔粗细（原始像素）", ItemsSource = new[] { "3 px", "6 px", "12 px", "24 px", "48 px" }, SelectedIndex = Array.IndexOf(BrushSizes, width) };
-    internal StackPanel CreateFreehandOptions()
+    private static WrapPanel OptionRow() => new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+    private static TextBlock OptionLabel(string text) => new() { Text = text, Margin = new Thickness(4, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+    private static ComboBox Choice(System.Collections.IEnumerable values, double width, string tooltip) => new() { Width = width, MinWidth = 0, Height = 30, ToolTip = tooltip, ItemsSource = values, Margin = new Thickness(2, 0, 4, 0), FontSize = 12 };
+    private static ComboBox Sizes(int width) { var choice = Choice(new[] { "3 px", "6 px", "12 px", "24 px", "48 px" }, 70, "画笔粗细（原始像素）"); choice.SelectedIndex = Array.IndexOf(BrushSizes, width); return choice; }
+    private static WrapPanel HintOptions(string text) { var row = OptionRow(); row.Children.Add(OptionLabel(text)); return row; }
+    private void AddColors(WrapPanel panel, bool compact = false)
     {
-        var freehand = new StackPanel(); freehand.Children.Add(OptionLabel("涂鸦粗细"));
-        var freehandSize = Sizes(_freehandWidth); freehand.Children.Add(freehandSize);
-        freehandSize.SelectionChanged += (_, _) => { if (freehandSize.SelectedIndex >= 0) { _freehandWidth = BrushSizes[freehandSize.SelectedIndex]; SelectTool(AnnotationTool.Freehand); } };
-        return freehand;
+        panel.Children.Add(ScreenshotToolbar.Separator());
+        foreach (var color in (compact ? new[] { "#FF6373", "#E7BE55", "#609F59", "#568DE3", "#202020" } : new[] { "#FF6373", "#D94B35", "#E7BE55", "#609F59", "#568DE3", "#202020", "#FFFFFF" }).Select(hex => (Color)ColorConverter.ConvertFromString(hex)))
+        {
+            var swatch = new Border { Width = 26, Height = 26, CornerRadius = new CornerRadius(7), Padding = new Thickness(3), BorderThickness = new Thickness(1), Background = Brushes.Transparent };
+            swatch.Child = new Border { CornerRadius = new CornerRadius(4), Background = new SolidColorBrush(color) };
+            var button = ScreenshotToolbar.IconButton("palette", AnnotationColors.Hex(color), () => ApplyColor(color)); button.Width = 28; button.Padding = new Thickness(0); button.Content = swatch;
+            AutomationProperties.SetName(button, "颜色 " + AnnotationColors.Hex(color)); panel.Children.Add(button); _swatches.Add((color, swatch));
+        }
+        var palette = ScreenshotToolbar.IconButton("palette", "自定义调色盘 / 填充颜色 (K)", ShowColors); palette.Name = "Property_palette";
+        var icon = (UIElement)palette.Content; palette.Content = null; var contents = new Grid(); contents.Children.Add(icon);
+        var marker = new Border { Width = 8, Height = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
+        marker.SetResourceReference(Border.BorderBrushProperty, "ToolbarBackground"); marker.BorderThickness = new Thickness(.5); contents.Children.Add(marker); _customColorMarkers.Add(marker);
+        palette.Content = contents; panel.Children.Add(palette);
+        panel.Children.Add(ScreenshotToolbar.IconButton("pipette", "画布吸管 · 自定义调色盘可切换屏幕吸管", () => StartEyedropper(false)));
     }
-    internal StackPanel CreateMosaicOptions()
+    private int _arrowWidth = 3;
+    internal WrapPanel CreateArrowOptions()
     {
-        var mosaic = new StackPanel(); mosaic.Children.Add(OptionLabel("马赛克模式"));
-        _mosaicMode = new ComboBox { Width = 180, ToolTip = "马赛克模式", ItemsSource = new[] { "框选马赛克", "涂鸦马赛克" }, SelectedIndex = 0 }; mosaic.Children.Add(_mosaicMode);
-        _mosaicSizeLabel = OptionLabel("画笔粗细"); _mosaicSizeLabel.Margin = new Thickness(0, 12, 0, 8); mosaic.Children.Add(_mosaicSizeLabel);
-        _mosaicSize = Sizes(_mosaicWidth); mosaic.Children.Add(_mosaicSize);
-        _mosaicMode.SelectionChanged += (_, _) => { UpdateMosaicSize(); SelectTool(AnnotationTool.Mosaic); };
-        _mosaicSize.SelectionChanged += (_, _) => { if (_mosaicSize.SelectedIndex >= 0) { _mosaicWidth = BrushSizes[_mosaicSize.SelectedIndex]; SelectTool(AnnotationTool.Mosaic); } };
-        UpdateMosaicSize(); return mosaic;
+        var panel = OptionRow(); panel.Children.Add(OptionLabel("箭头粗细")); var sizes = Sizes(_arrowWidth); panel.Children.Add(sizes);
+        _brushControls[AnnotationTool.Arrow] = sizes;
+        sizes.SelectionChanged += (_, _) => { if (_syncingOptions || sizes.SelectedIndex < 0) return; _arrowWidth = BrushSizes[sizes.SelectedIndex]; if (Surface.Selected is { Tool: AnnotationTool.Arrow } selected) Surface.SetSelected(selected with { Width = _arrowWidth }); };
+        AddColors(panel); return panel;
+    }
+    internal WrapPanel CreateFreehandOptions()
+    {
+        var panel = OptionRow(); panel.Children.Add(OptionLabel("涂鸦")); var size = Sizes(_freehandWidth); panel.Children.Add(size);
+        _brushControls[AnnotationTool.Freehand] = size;
+        size.SelectionChanged += (_, _) => { if (!_syncingOptions && size.SelectedIndex >= 0) { _freehandWidth = BrushSizes[size.SelectedIndex]; if (Surface.Selected is { Tool: AnnotationTool.Freehand } selected) Surface.SetSelected(selected with { Width = _freehandWidth }); } };
+        AddColors(panel); return panel;
+    }
+    internal WrapPanel CreateMosaicOptions()
+    {
+        var panel = OptionRow(); _mosaicMode = Choice(new[] { "框选马赛克", "涂鸦马赛克" }, 130, "马赛克模式"); _mosaicMode.SelectedIndex = 0; panel.Children.Add(_mosaicMode);
+        _mosaicSizeLabel = OptionLabel("画笔粗细"); panel.Children.Add(_mosaicSizeLabel); _mosaicSize = Sizes(_mosaicWidth); panel.Children.Add(_mosaicSize);
+        _mosaicMode.SelectionChanged += (_, _) => UpdateMosaicSize();
+        _mosaicSize.SelectionChanged += (_, _) => { if (!_syncingOptions && _mosaicSize.SelectedIndex >= 0) { _mosaicWidth = BrushSizes[_mosaicSize.SelectedIndex]; if (Surface.Selected is { Tool: AnnotationTool.MosaicBrush } selected) Surface.SetSelected(selected with { Width = _mosaicWidth }); } };
+        UpdateMosaicSize(); return panel;
     }
     private void UpdateMosaicSize()
     {
         if (_mosaicSize == null || _mosaicSizeLabel == null) return;
-        _mosaicSize.Visibility = _mosaicSizeLabel.Visibility = MosaicFreehand ? Visibility.Visible : Visibility.Collapsed;
+        _mosaicSize.IsEnabled = MosaicFreehand; _mosaicSizeLabel.Opacity = MosaicFreehand ? 1 : .45;
     }
-    internal HoverToolOptions OptionsFor(AnnotationTool tool) => _options[tool];
+    internal WrapPanel OptionsFor(AnnotationTool tool) => _toolbar!.OptionsFor(tool);
     private void HideOptions() { foreach (var options in _flyouts.Values) options.Hide(); }
     private void OwnerDeactivated(object? sender, EventArgs e) => HideOptions();
     private bool IsBrush => Tool == AnnotationTool.Freehand || Tool == AnnotationTool.Mosaic && MosaicFreehand;
     private Annotation Stroke(Point start, Point end) => new(Tool == AnnotationTool.Mosaic && MosaicFreehand ? AnnotationTool.MosaicBrush : Tool,
-        start, ConstrainEnd(start, end), _color, Points: IsBrush ? _points.ToArray() : null, Width: IsBrush ? (Tool == AnnotationTool.Freehand ? _freehandWidth : _mosaicWidth) : Tool == AnnotationTool.Rectangle ? _shapeWidth : 3, Shape: _shape, FillColor: Tool == AnnotationTool.Rectangle ? _fillColor : null);
+        start, ConstrainEnd(start, end), _color, Points: IsBrush ? _points.ToArray() : null, Width: IsBrush ? (Tool == AnnotationTool.Freehand ? _freehandWidth : _mosaicWidth) : Tool == AnnotationTool.Rectangle ? _shapeWidth : Tool == AnnotationTool.Arrow ? _arrowWidth : 3, Shape: _shape, FillColor: Tool == AnnotationTool.Rectangle ? _fillColor : null);
     private Point ConstrainEnd(Point start, Point end) => AnnotationGeometry.Constrain(start, end, new Size(Surface.Width, Surface.Height), Tool == AnnotationTool.Rectangle && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
     private void CancelStroke()
     {
@@ -572,7 +610,7 @@ internal sealed class ScreenshotEditor : IDisposable
     }
     internal async Task CopyAndCompleteAsync()
     {
-        if (_finishing || !FinishText()) return; _finishing = true;
+        if (_finishing || !FinishText()) return; _finishing = true; UpdateButtons();
         try
         {
             var bitmap = Surface.Export();
@@ -590,7 +628,7 @@ internal sealed class ScreenshotEditor : IDisposable
         _owner.PreviewKeyDown -= KeyDown;
         InputMethod.SetIsInputMethodEnabled(_owner, _inputMethodEnabled);
         _owner.Deactivated -= OwnerDeactivated;
-        foreach (var options in _flyouts.Values) options.Dispose(); _flyouts.Clear(); _options.Clear();
+        foreach (var options in _flyouts.Values) options.Dispose(); _flyouts.Clear();
         Surface.SelectionChanged -= RefreshColors; Handles.Dispose(); CancelStroke();
     }
 }

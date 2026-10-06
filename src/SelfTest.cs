@@ -42,6 +42,16 @@ internal static class SelfTest
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
         Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
+        if (Array.IndexOf(args, "--toolbar-only") >= 0)
+        {
+            await ToolbarPreviewTests.RunAsync(Check);
+            await InPlaceTextTests.RunAsync(Check);
+            await UpgradeTests.RunAsync(Check);
+            await RecentFilesTests.RunAsync(Check);
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            return failures == 0 ? 0 : 1;
+        }
         if (Array.IndexOf(args, "--office-only") >= 0)
         {
             await OfficeToolsTests.RunAsync(Check, Array.IndexOf(args, "--pointer") >= 0);

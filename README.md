@@ -1,6 +1,6 @@
 # 轻截 · QuickCapture
 
-轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.8.0**。
+轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.9.0**。
 
 ## 主要能力
 
@@ -10,6 +10,14 @@
 - **贴图对照**：置顶图片、滚轮缩放、Ctrl+滚轮透明度、恢复原尺寸、鼠标穿透及托盘统一隐藏 / 恢复 / 解除穿透。
 - **录屏与导出**：区域、窗口、显示器录制；暂停 / 继续，系统声音与麦克风；时间裁切、画面裁剪、变速、静音，导出 MP4 / WebM / GIF。
 - **文件与日常操作**：截图支持 PNG / JPG / WebP / BMP，复制、自动保存、置顶贴图；最近文件、保存目录、全局快捷键、托盘和浅色 / 深色主题。
+
+## 本轮截图工具栏与文件预览
+
+截图采用两层浮动圆角面板，主栏按绘制、编辑和输出分组，属性栏随工具或选中的标注显示设置；常用色块、调色盘和吸管可直接操作。两种主题共用布局，窄窗口自动换行，选区边缘自动避让。最近文件左侧显示真实图片或视频首帧，保留原行高和操作；透明图片显示棋盘格，视频带播放标记。详见 [工具栏与预览说明](docs/toolbar-and-previews.md)。
+
+<p align="center"><img src="docs/images/toolbar-shape-light.png" width="780" alt="浅色截图工具栏与形状属性" /><br/><img src="docs/images/toolbar-shape-dark.png" width="780" alt="深色截图工具栏与形状属性" /></p>
+
+<p align="center"><img src="docs/images/recent-previews-light.png" width="360" alt="最近文件真实图片预览" /> <img src="docs/images/recent-previews-dark.png" width="360" alt="深色最近文件预览与格式回退图标" /></p>
 
 ## 本轮办公功能
 
@@ -44,7 +52,7 @@ MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显
 
 ## 获取与运行
 
-下载 [v0.8.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.8.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.8.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
+下载 [v0.9.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.9.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.9.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
 
 使用便携包时，解压整个文件夹并运行 `QuickCapture/QuickCapture.exe`。自带 .NET 运行时和 FFmpeg / ffprobe，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
 
@@ -81,7 +89,7 @@ python tools/setup-ocr.py
 - 工具快捷键：`R` 形状、`E` 选择对象、`A` 箭头、`T` 文字、`D` 步骤编号、`O` 提取文字、`B` 涂鸦、`M` 马赛克、`K` 调色盘、`Z` / `Y` 撤销 / 重做、`P` 贴图、`N` 重新框选、`S` 保存、`V` 复制。正常文字输入时不会触发工具快捷键。
 - 文字样式支持 Microsoft YaHei UI、SimSun、Segoe UI、Arial、Consolas；提供 12–144 原始像素的预设字号、粗体及左对齐 / 居中 / 右对齐。编辑框保持透明，样式、调色盘与吸管的修改即时更新预览。
 - 选择对象后可移动、缩放、方向键微调、Delete 删除。文字编辑按一次确认记录一个撤销步骤；空白内容确认不创建新对象，取消已有文字的编辑恢复原内容。
-- 调色盘含预设、最近颜色、HSV、HEX、透明度以及画布 / 屏幕吸管；吸管单击确认，Esc 或右键取消。涂鸦及马赛克按钮悬停打开粗细 / 模式选项，单次笔迹可整体撤销。
+- 调色盘含预设、最近颜色、HSV、HEX、透明度以及画布 / 屏幕吸管；吸管单击确认，Esc 或右键取消。涂鸦及马赛克在独立属性栏显示粗细 / 模式选项，单次笔迹可整体撤销。
 - 保存窗口可临时选择图片格式与质量，不改变默认设置；复制和自动保存沿用默认截图格式，剪贴板同时提供标准位图。
 - 录屏默认为 30 FPS、H.264 / MP4、显示鼠标。MP4 与 WebM 各自提供 15 / 30 / 60 FPS，GIF 提供 5 / 10 / 15 / 20 / 30 FPS，默认 15 FPS；三个格式独立保存，设置与主面板同步。系统声音与麦克风独立勾选，默认均关闭。
 - 控制条支持暂停 / 继续，视频和声音同步暂停，暂停期间不增加有效时长；暂停后也可以停止。控制条自动靠近录制目标并避让边缘，也可拖动计时区手动放置。
@@ -143,7 +151,9 @@ python tools/setup-ocr.py
 | `SelectionWindow.cs` / `ToolbarPlacement.cs` | 各显示器原位选区、工具栏避让与 DPI 坐标转换 |
 | `AnnotationSurface.cs` / `ScreenshotEditor.cs` / `EditorWindow.cs` | 共享标注操作、导出、复制、贴图 |
 | `InPlaceTextEditor.cs` | 透明文字输入、实时样式、确认 / 取消及中文输入法组合保护 |
-| `HoverToolOptions.cs` | 按钮下方的悬停设置面板、下拉选择与自动收起 |
+| `ScreenshotToolbar.cs` / `ScreenshotToolbarStyles.xaml` | 共享两层面板、图标状态及窄屏换行 |
+| `HoverToolOptions.cs` | 自定义调色盘与嵌套下拉窗口 |
+| `RecentThumbnail.cs` | 异步缩略图、视频首帧、文件版本与有容量限制的缓存 |
 | `ThemeService.cs` / `App.xaml` | 浅色与深色资源、即时主题切换 |
 | `WindowSnapper.cs` / `Native.cs` | 窗口层级、可见边界与悬停吸附 |
 | `RecordingFrame.cs` | 精确选区录屏边框、鼠标穿透与捕获排除 |
@@ -161,6 +171,14 @@ python tools/setup-ocr.py
 | `DesignTokens.xaml` / `UiDesign.cs` | 统一布局与控件规范，见 [设计规范表](docs/design-spec.md) |
 
 ## 集成验证
+
+v0.9.0 工具栏与缩略图专项覆盖两主题、窄窗口、小选区与屏幕边缘、四种图片与视频预览、缓存、刷新滚动、打开删除、待导出继续编辑，以及原位文字 / 裁剪 / 剪贴板回归：
+
+```powershell
+.\dist\QuickCapture.exe --self-test --toolbar-only
+```
+
+本次 20 / 20 项通过，结果归档到 `artifacts/toolbar-preview-results.json`，实际显示器记录在 `artifacts/toolbar-displays.json`。具体环境与未验证范围见 [验收记录](docs/verification.md)。
 
 v0.8.0 增加办公功能专项入口，自动验证结果与边界见 [验收记录](docs/verification.md)：
 

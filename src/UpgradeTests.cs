@@ -70,8 +70,8 @@ internal static class UpgradeTests
             {
                 owner.Show(); await HotkeyCaptureTests.ActivateAsync(owner);
                 var tools = ToolCatalog.Create(editor, null); Ensure(tools.Select(t => t.Shortcut).Distinct().Count() == tools.Count, "Duplicate single-key shortcuts");
-                foreach (var definition in tools.Where(t => t.Id != "reselect")) { var button = editor.ButtonFor(definition.Id); Ensure(button.Content is Viewbox && button.ToolTip!.ToString()!.Contains(definition.Shortcut.ToString()), "Button is not an icon with a shortcut tooltip"); }
-                editor.ButtonFor("crop").Focus();
+                foreach (var definition in tools.Where(t => t.Id is not ("reselect" or "color"))) { var button = editor.ButtonFor(definition.Id); Ensure(button.Content is StackPanel icons && icons.Children.OfType<Viewbox>().Any() && button.ToolTip!.ToString()!.Contains(definition.Shortcut.ToString()), "Button is not an icon with a shortcut tooltip"); }
+                owner.Focus();
                 foreach (var (key, tool) in new[] { (Key.R,AnnotationTool.Rectangle), (Key.A,AnnotationTool.Arrow), (Key.T,AnnotationTool.Text), (Key.B,AnnotationTool.Freehand), (Key.M,AnnotationTool.Mosaic), (Key.C,AnnotationTool.Crop) }) { await HotkeyCaptureTests.PressAsync(owner, key); Ensure(editor.Tool == tool, $"Shortcut {key} failed"); }
                 input.Focus(); Ensure(input.IsKeyboardFocused, "Text field could not receive focus");
                 await HotkeyCaptureTests.PressAsync(owner, Key.R); Ensure(editor.Tool == AnnotationTool.Crop, $"Typing hijacked tool shortcut: tool={editor.Tool}");

@@ -321,7 +321,7 @@ public partial class MainWindow : Window
                 .DistinctBy(f => f.FullName, StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(f => string.Equals(f.FullName, generatedPath, StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(f => f.LastWriteTime).Take(20)
-                .Select(f => new RecentItem(f.FullName, (RecordingRecovery.Owns(f.FullName) ? "待导出 · " : "") + f.Name, $"{f.LastWriteTime:MM-dd HH:mm}  ·  {f.Length / 1024d / 1024d:F2} MB")).ToArray();
+                .Select(f => new RecentItem(f.FullName, (RecordingRecovery.Owns(f.FullName) ? "待导出 · " : "") + f.Name, $"{f.LastWriteTime:MM-dd HH:mm}  ·  {f.Length / 1024d / 1024d:F2} MB", $"{f.LastWriteTimeUtc.Ticks}:{f.Length}", _settings.MediaToolsPath)).ToArray();
             RecentList.ItemsSource = items;
             RecentList.SelectedItem = items.FirstOrDefault(item => string.Equals(item.Path, generatedPath ?? selectedPath, StringComparison.OrdinalIgnoreCase));
             UpdateRecentHeight();
@@ -466,7 +466,7 @@ public partial class MainWindow : Window
     }
 }
 
-internal sealed record RecentItem(string Path, string Name, string Detail)
+internal sealed record RecentItem(string Path, string Name, string Detail, string Revision = "", string ToolsPath = "")
 {
     public bool IsVideo => System.IO.Path.GetExtension(Path).ToLowerInvariant() is ".mp4" or ".webm" or ".gif";
     public string MediaType => IsVideo ? "视频" : "图片";

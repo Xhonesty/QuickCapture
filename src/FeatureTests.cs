@@ -66,10 +66,10 @@ internal static class FeatureTests
             var owner = new Window();
             using var editor = new ScreenshotEditor(owner, original, new Settings(), _ => { }, () => { });
             var toolbar = editor.CreateToolbar();
-            var button = toolbar.Children.OfType<Button>().Single(b => b.Name == "Tool_freehand");
+            var button = toolbar.MainTools.Children.OfType<Button>().Single(b => b.Name == "Tool_freehand");
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Ensure(editor.Tool == AnnotationTool.Freehand, "Doodle button not wired");
-            toolbar.Children.OfType<Button>().Single(b => b.Name == "Tool_mosaic").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            var content = (StackPanel)((Border)editor.OptionsFor(AnnotationTool.Mosaic).Popup.Child).Child;
+            toolbar.MainTools.Children.OfType<Button>().Single(b => b.Name == "Tool_mosaic").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var content = editor.OptionsFor(AnnotationTool.Mosaic);
             var mode = content.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "马赛克模式");
             Ensure(mode.IsEnabled && !editor.MosaicFreehand, "Rectangle mosaic mode unavailable");
             mode.SelectedIndex = 1; Ensure(editor.MosaicFreehand, "Brush mosaic mode unavailable");
@@ -138,45 +138,23 @@ internal static class FeatureTests
             }
             finally { selection.Close(); }
         });
-        await check("Hover-only tool options open below buttons and survive nested dropdowns", async () =>
+        await check("Persistent brush properties stay below the toolbar and survive nested dropdowns", async () =>
         {
-            var owner = new Window { Width = 800, Height = 350, Left = 250, Top = 180 };
-            Ui.Theme(owner); ThemeService.Apply("Light");
-            var original = UiChangeTests.SyntheticDesktop(800, 500);
-            using var editor = new ScreenshotEditor(owner, original, new Settings(), _ => { }, () => { });
+            var owner = new Window { Width = 840, Height = 350 }; Ui.Theme(owner); ThemeService.Apply("Light");
+            using var editor = new ScreenshotEditor(owner, UiChangeTests.SyntheticDesktop(800, 500), new Settings(), _ => { }, () => { });
             var toolbar = editor.CreateToolbar(); owner.Content = toolbar;
-            editor.SelectTool(AnnotationTool.Arrow);
-            var freehand = editor.OptionsFor(AnnotationTool.Freehand);
-            var mosaic = editor.OptionsFor(AnnotationTool.Mosaic);
             try
             {
-                owner.Show(); await Task.Delay(100);
-                Ensure(toolbar.Children.OfType<ComboBox>().Count() == 0, "Brush settings still occupy the toolbar");
-                var doodle = toolbar.Children.OfType<Button>().Single(b => b.Name == "Tool_freehand");
-                Ensure(!freehand.Popup.IsOpen && !mosaic.Popup.IsOpen, "Options visible before hover");
-                doodle.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent }); await Task.Delay(60);
-                Ensure(freehand.Popup.IsOpen && editor.Tool == AnnotationTool.Arrow, "Hover did not open settings or changed the active tool");
-                var buttonBottom = doodle.PointToScreen(new Point(0, doodle.ActualHeight));
-                var popupOrigin = ((Border)freehand.Popup.Child).PointToScreen(new Point(0, 0));
-                Ensure(popupOrigin.Y >= buttonBottom.Y, "Tool options did not appear below the button");
-                UiChangeTests.RenderElement((Border)freehand.Popup.Child, "hover-doodle-options.png");
-                var freehandContent = (StackPanel)((Border)freehand.Popup.Child).Child;
-                var size = freehandContent.Children.OfType<ComboBox>().Single();
-                size.IsDropDownOpen = true;
-                doodle.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseLeaveEvent }); await Task.Delay(250);
-                Ensure(freehand.Popup.IsOpen, "Moving into the dropdown closed the options");
-                size.SelectedIndex = 2; Ensure(editor.Tool == AnnotationTool.Freehand, "Choosing brush size did not activate doodle"); size.IsDropDownOpen = false;
-                await Task.Delay(250); Ensure(!freehand.Popup.IsOpen, "Options did not close after leaving");
-                var mosaicButton = toolbar.Children.OfType<Button>().Single(b => b.Name == "Tool_mosaic");
-                mosaicButton.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent }); await Task.Delay(60);
-                Ensure(mosaic.Popup.IsOpen && !freehand.Popup.IsOpen, "Hover opened multiple option panels");
-                var content = (StackPanel)((Border)mosaic.Popup.Child).Child;
-                var mode = content.Children.OfType<ComboBox>().Single(c => (string?)c.ToolTip == "马赛克模式"); mode.SelectedIndex = 1;
-                Ensure(editor.MosaicFreehand && editor.Tool == AnnotationTool.Mosaic, "Hover mode choice did not activate mosaic");
-                UiChangeTests.RenderElement((Border)mosaic.Popup.Child, "hover-mosaic-options.png");
+                owner.Show(); await Task.Delay(100); editor.SelectTool(AnnotationTool.Freehand); owner.UpdateLayout();
+                var freehand = editor.OptionsFor(AnnotationTool.Freehand); var mosaic = editor.OptionsFor(AnnotationTool.Mosaic);
+                Ensure(freehand.IsVisible && !mosaic.IsVisible, "Unrelated properties remain visible");
+                var height = toolbar.ActualHeight; var size = freehand.Children.OfType<ComboBox>().Single();
+                size.IsDropDownOpen = true; await Task.Delay(220); Ensure(freehand.IsVisible, "Dropdown hid the properties");
+                size.SelectedIndex = 2; size.IsDropDownOpen = false;
+                editor.SelectTool(AnnotationTool.Mosaic); var mode = mosaic.Children.OfType<ComboBox>().First(); mode.SelectedIndex = 1; owner.UpdateLayout();
+                Ensure(editor.MosaicFreehand && mosaic.IsVisible && !freehand.IsVisible && Math.Abs(toolbar.ActualHeight - height) < .5, "Tool/mode change moved or hid the property panel");
             }
-            finally { editor.Dispose(); owner.Close(); ThemeService.Apply("Dark"); }
-            Ensure(!freehand.Popup.IsOpen && !mosaic.Popup.IsOpen, "Popup remains open after disposal");
+            finally { owner.Close(); }
         });
     }
 

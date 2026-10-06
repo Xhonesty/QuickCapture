@@ -163,7 +163,7 @@ internal static class OfficeToolsTests
                 {
                     owner.Editor.AddStep(new(64, 58)); owner.Editor.AddStep(new(64, 179)); owner.Editor.AddStep(new(64, 258)); owner.UpdateLayout();
                     UiChangeTests.Render(owner, "office-steps-" + theme.ToLowerInvariant() + ".png");
-                    owner.Editor.ShowStepOptions(); await Task.Delay(80); UiChangeTests.RenderElement((FrameworkElement)owner.Editor.OptionsFor(AnnotationTool.Step).Popup.Child, "office-step-options-" + theme.ToLowerInvariant() + ".png");
+                    owner.Editor.ShowStepOptions(); await Task.Delay(80); UiChangeTests.RenderElement((FrameworkElement)owner.Editor.OptionsFor(AnnotationTool.Step), "office-step-options-" + theme.ToLowerInvariant() + ".png");
                     var ocr = new OcrWindow(owner, owner.Editor.OcrImage, settings); ocr.Show(); await ocr.Recognition; ocr.UpdateLayout();
                     Ensure(ocr.State == OcrState.Success, "OCR preview is not a real recognized result"); UiChangeTests.Render(ocr, "office-ocr-" + theme.ToLowerInvariant() + ".png"); ocr.Close();
                     var pin = PinManager.Create(fixture, settings, _ => { }); await Task.Delay(80); pin.Menu.IsOpen = true; await Task.Delay(120); pin.Menu.UpdateLayout(); UiChangeTests.RenderElement(pin.Menu, "office-pin-menu-" + theme.ToLowerInvariant() + ".png");
@@ -202,10 +202,10 @@ internal static class OfficeToolsTests
                 var bounds = AnnotationGeometry.Bounds(editor.Surface.Selected!); var crop = editor.Surface.CropBounds;
                 var edge = editor.Surface.PointToScreen(new(bounds.Right - crop.X, bounds.Bottom - crop.Y));
                 await HotkeyCaptureTests.DragAsync(owner, edge, edge + new Vector(24, 24)); Ensure(AnnotationGeometry.Bounds(editor.Surface.Selected!).Width > 60, "Actual resize failed");
-                editor.ShowStepOptions(); var options = editor.OptionsFor(AnnotationTool.Step).Popup.Child;
+                editor.ShowStepOptions(); var options = editor.OptionsFor(AnnotationTool.Step);
                 UpgradeTests.Find<TextBox>(options, box => box.Name == "StepNumber").Text = "12";
                 UpgradeTests.Find<Button>(options, button => button.Content?.ToString() == "修改选中数字").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                editor.OptionsFor(AnnotationTool.Step).Hide(); editor.Surface.Focus();
+                 editor.Surface.Focus();
                 await HotkeyCaptureTests.PressAsync(owner, Key.Z, ModifierKeys.Control); Ensure(editor.Surface.Items[0].StepNumber == 1, "Ctrl+Z digit edit failed");
                 await HotkeyCaptureTests.PressAsync(owner, Key.Y, ModifierKeys.Control); var item = editor.Surface.Items[0]; var itemBounds = AnnotationGeometry.Bounds(item);
                 editor.Surface.SelectAt(new(itemBounds.Left + itemBounds.Width / 2 - crop.X, itemBounds.Top + itemBounds.Height / 2 - crop.Y));

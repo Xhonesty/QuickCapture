@@ -129,7 +129,12 @@ def main():
                                        for item in api(REPO + "/releases?per_page=100")]}, ensure_ascii=False, indent=2))
         return
 
-    if git("branch", "--show-current") != "main" or git("status", "--porcelain"):
+    # Local research notes are not build/package inputs. Preserve them without
+    # adding unrelated user work to the release commit or portable archive.
+    untracked = git("ls-files", "--others", "--exclude-standard").splitlines()
+    if (git("branch", "--show-current") != "main"
+            or git("status", "--porcelain", "--untracked-files=no")
+            or any(not path.startswith("docs/research/") for path in untracked)):
         raise SystemExit("Publish from a clean main checkout.")
     if remote != commit:
         raise SystemExit("Remote main differs from the local commit.")

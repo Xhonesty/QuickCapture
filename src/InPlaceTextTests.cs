@@ -54,7 +54,7 @@ internal static class InPlaceTextTests
                 await ClickTextAsync(window, editor, new(90, 150));
                 var input = RequireInput(editor); input.Text = "透明文字预览\nQuickCapture";
                 editor.ShowTextOptions();
-                var options = editor.OptionsFor(AnnotationTool.Text).Popup.Child;
+                var options = editor.OptionsFor(AnnotationTool.Text);
                 Find<ComboBox>(options, c => c.ToolTip as string == "字体").SelectedItem = "Microsoft YaHei UI";
                 Find<ComboBox>(options, c => c.ToolTip as string == "字号（原始像素）").SelectedItem = 32d;
                 Find<CheckBox>(options, c => c.Content as string == "粗体").IsChecked = true;
@@ -179,10 +179,11 @@ internal static class InPlaceTextTests
                 await editor.CopyAndCompleteAsync();
                 var clipboard = Clipboard.GetDataObject();
                 Ensure(clipboard?.GetData("PNG", false) is MemoryStream png && png.ToArray().SequenceEqual(File.ReadAllBytes(path)), "Copied PNG differs from saved text export");
-                Ensure(Clipboard.GetImage() is { } copied && copied.PixelWidth == output.PixelWidth && copied.PixelHeight == output.PixelHeight, "Clipboard is missing the compatible bitmap representation");
+                var copied = Clipboard.GetImage();
+                Ensure(copied != null && copied.PixelWidth == output.PixelWidth && copied.PixelHeight == output.PixelHeight, "Clipboard is missing the compatible bitmap representation");
                 var savedPng = ImageExportService.Decode(File.ReadAllBytes(path), ScreenshotFormat.Png);
                 var opaqueReference = ImageExportService.Decode(ImageExportService.Encode(savedPng, ScreenshotFormat.Bmp, 100), ScreenshotFormat.Bmp);
-                Ensure(StraightBytes(Clipboard.GetImage()!).SequenceEqual(StraightBytes(opaqueReference)), "Compatible clipboard bitmap differs from the saved PNG composited onto white");
+                Ensure(StraightBytes(copied!).SequenceEqual(StraightBytes(opaqueReference)), "Compatible clipboard bitmap differs from the saved PNG composited onto white");
             }, sourceDpi: 144);
         });
     }

@@ -101,8 +101,7 @@ internal static class UiChangeTests
                 string second = editor.SaveImage(); Ensure(second != first && saved == second, "Saved image cache did not invalidate after editing");
                 selection.Reselect(); Ensure(selection.Editor == null && !done.Task.IsCompleted, "Reselect ended capture instead of resetting selection");
                 selection.BeginEditing(region); Ensure(selection.Editor!.Surface.Count == 0, "Reselect retained old annotations");
-                var border = FindVisual<Border>(selection, b => b.Child is WrapPanel);
-                var panel = (WrapPanel)border!.Child;
+                var panel = FindVisual<ScreenshotToolbar>(selection, _ => true)!;
                 var copy = FindVisual<Button>(panel, b => b.Name == "Tool_copy");
                 copy!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
                 Ensure(done.Task.IsCompleted && saved != null && File.Exists(saved), "Copy / auto-save button did not finish the screenshot");

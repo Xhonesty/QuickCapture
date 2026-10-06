@@ -36,7 +36,7 @@ internal sealed class SelectionWindow : Window
     private SavedRegion? _hoverRegion, _pressedWindow;
     private bool _dragging;
     private Point? _start;
-    private Border? _toolbar;
+    private ScreenshotToolbar? _toolbar;
     private bool _locked, _closed;
     internal ScreenshotEditor? Editor { get; private set; }
     internal Rect SelectionBounds { get; private set; }
@@ -182,9 +182,8 @@ internal sealed class SelectionWindow : Window
         _canvas.Children.Add(Editor.Handles);
         _canvas.Children.Add(Editor.TextOverlay);
         Editor.Surface.CropChanged += UpdateEditingBounds;
-        _toolbar = new Border { CornerRadius = UiDesign.Radius, Padding = new Thickness(8), BorderThickness = new Thickness(1), Child = Editor.CreateToolbar(() =>
-        { if (Editor!.Surface.Count == 0 || MessageBox.Show(this, "重新框选会清除当前标注。调整大小或位置可使用裁剪手柄并保留标注。仍要重新框选吗？", "重新框选", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) Reselect(); }), Effect = UiDesign.Shadow() };
-        _toolbar.SetResourceReference(Border.BackgroundProperty, "PanelBackground"); _toolbar.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
+        _toolbar = Editor.CreateToolbar(() =>
+        { if (Editor!.Surface.Count == 0 || MessageBox.Show(this, "重新框选会清除当前标注。调整大小或位置可使用裁剪手柄并保留标注。仍要重新框选吗？", "重新框选", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) Reselect(); });
         _toolbar.SizeChanged += (_, _) => PositionToolbar();
         _canvas.Children.Add(_toolbar); UpdateEditingBounds(); PositionToolbar();
         Editor.Surface.Focus(); _modeChanged?.Invoke(this, true);
@@ -208,8 +207,8 @@ internal sealed class SelectionWindow : Window
         var work = _screen.WorkingArea;
         var available = new Rect((work.X - _screen.Bounds.X) / dpi.DpiScaleX + 8, (work.Y - _screen.Bounds.Y) / dpi.DpiScaleY + 8,
             Math.Max(1, work.Width / dpi.DpiScaleX - 16), Math.Max(1, work.Height / dpi.DpiScaleY - 16));
-        _toolbar.MaxWidth = Math.Min(930, available.Width);
-        _toolbar.Measure(new Size(_toolbar.MaxWidth, double.PositiveInfinity));
+        _toolbar.SetAvailableWidth(available.Width);
+        _toolbar.Measure(new Size(available.Width, double.PositiveInfinity));
         var size = _toolbar.DesiredSize;
         var point = ToolbarPlacement.Place(SelectionBounds, size, available);
         Canvas.SetLeft(_toolbar, point.X); Canvas.SetTop(_toolbar, point.Y); ToolbarBounds = new(point, size);

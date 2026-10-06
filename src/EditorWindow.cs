@@ -21,6 +21,7 @@ internal sealed class EditorWindow : Window
         Closed += (_, _) => editor.Dispose();
         var root = new DockPanel(); Content = root;
         var toolbar = editor.CreateToolbar(); toolbar.Margin = new Thickness(12); DockPanel.SetDock(toolbar, Dock.Top); root.Children.Add(toolbar);
+        root.SizeChanged += (_, _) => toolbar.SetAvailableWidth(root.ActualWidth - 24);
         var bottom = new DockPanel(); DockPanel.SetDock(bottom, Dock.Bottom); root.Children.Add(bottom);
         var hint = new TextBlock { Margin = new Thickness(16, 8, 16, 8), FontSize = UiDesign.Number("FontHelp"), Text = "T 原位文字 · D 步骤编号 · O 提取文字 · E 编辑标注 · K 调色 / 吸管 · Ctrl+Z 撤销", TextWrapping = TextWrapping.Wrap };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
