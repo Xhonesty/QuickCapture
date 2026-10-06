@@ -45,6 +45,13 @@ internal static class Native
         long style = GetWindowLongPtr(hwnd, -20).ToInt64();
         SetWindowLongPtr(hwnd, -20, new IntPtr(style | 0x20 | 0x08000000)); // WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
     }
+    internal static void SetClickThrough(Window window, bool enabled)
+    {
+        var hwnd = new WindowInteropHelper(window).EnsureHandle();
+        long style = GetWindowLongPtr(hwnd, -20).ToInt64(), flags = 0x20 | 0x08000000;
+        SetWindowLongPtr(hwnd, -20, new IntPtr(enabled ? style | flags : style & ~flags));
+    }
+    internal static bool IsClickThrough(Window window) => (GetWindowLongPtr(new WindowInteropHelper(window).EnsureHandle(), -20).ToInt64() & 0x20) != 0;
     internal static bool VisibleWindowBounds(IntPtr hwnd, out Rectangle bounds)
     {
         bounds = Rectangle.Empty;

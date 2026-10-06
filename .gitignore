@@ -4,6 +4,7 @@ src/obj/
 dist/
 artifacts/
 vendor/media/*.exe
+vendor/ocr/tessdata/
 **/Captures/
 **/Data/
 **/Diagnostics/

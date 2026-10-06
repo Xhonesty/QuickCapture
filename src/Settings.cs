@@ -45,6 +45,11 @@ internal sealed class Settings
     public ExportQuality RecordingQuality { get; set; } = ExportQuality.Medium;
     public int GifFps { get; set; } = 15;
     public string MediaToolsPath { get; set; } = "";
+    public string OcrLanguage { get; set; } = "chi_sim+eng";
+    public bool OcrMergeLines { get; set; }
+    public int StepStart { get; set; } = 1;
+    public int StepSize { get; set; } = 40;
+    public double PinOpacity { get; set; } = 1;
     public SavedRegion? LastRegion { get; set; }
     public int GetRecordingFps(RecordingFormat format) => format switch
     {
@@ -83,6 +88,7 @@ internal sealed class Settings
             if (!Enum.IsDefined(s.RecordingQuality)) s.RecordingQuality = ExportQuality.Medium;
             s.ScreenshotQuality = Math.Clamp(s.ScreenshotQuality, 1, 100);
             s.NormalizeRecordingFps();
+            s.NormalizeOffice();
             HotkeyService.Parse(s.ScreenshotHotkey); HotkeyService.Parse(s.RecordingHotkey);
             if (s.ScreenshotHotkey.Equals(s.RecordingHotkey, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("快捷键重复");
             return s;
@@ -92,10 +98,17 @@ internal sealed class Settings
     public void Save()
     {
         NormalizeRecordingFps();
+        NormalizeOffice();
         Directory.CreateDirectory(Paths.Data);
         string temp = Paths.SettingsFile + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temp, Paths.SettingsFile, true);
+    }
+    private void NormalizeOffice()
+    {
+        if (OcrLanguage is not ("chi_sim+eng" or "chi_tra+eng" or "eng")) OcrLanguage = "chi_sim+eng";
+        StepStart = Math.Clamp(StepStart, 1, 9999); StepSize = Math.Clamp(StepSize, 16, 160);
+        PinOpacity = double.IsFinite(PinOpacity) ? Math.Clamp(PinOpacity, 0.2, 1) : 1;
     }
 }
 

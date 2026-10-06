@@ -42,6 +42,11 @@ internal static class SelfTest
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
         Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
+        if (Array.IndexOf(args, "--office-only") >= 0)
+        {
+            await OfficeToolsTests.RunAsync(Check, Array.IndexOf(args, "--pointer") >= 0);
+            return failures == 0 ? 0 : 1;
+        }
         if (Array.IndexOf(args, "--preferences-only") >= 0)
         {
             await RecordingPreferencesTests.RunAsync(Check);

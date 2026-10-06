@@ -47,3 +47,21 @@ Tools/media/manifest.json (source tree: vendor/media/manifest.json).
 Full license and build configuration: licenses/FFmpeg.txt and
 licenses/FFmpeg-build.txt. Executables are excluded from the Git repository;
 tools/setup-media.ps1 obtains and verifies the pinned upstream package.
+
+Tesseract .NET wrapper 5.2.0 / Tesseract native 5.2.0
+https://github.com/charlesw/tesseract/tree/5.2.0
+https://github.com/tesseract-ocr/tesseract/tree/5.2.0
+Apache License 2.0; copyright Charles Weld and Tesseract contributors.
+Full licenses: licenses/Tesseract-wrapper.txt and Tesseract-engine.txt.
+
+Leptonica 1.82.0 (native dependency of Tesseract)
+https://github.com/DanBloomberg/leptonica/tree/1.82.0
+BSD 2-clause license; copyright 2001-2020 Leptonica.
+Full license: licenses/Leptonica.txt.
+
+tessdata_fast simplified Chinese, traditional Chinese and English LSTM models
+https://github.com/tesseract-ocr/tessdata_fast
+Apache License 2.0. Pinned source, exact sizes and SHA-256 are recorded in
+Tools/ocr/manifest.json (source tree: vendor/ocr/manifest.json).
+Full license: licenses/Tesseract-models.txt.
+Models are downloaded with tools/setup-ocr.py; no recognition data is uploaded.

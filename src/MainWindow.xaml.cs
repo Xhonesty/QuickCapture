@@ -60,7 +60,7 @@ public partial class MainWindow : Window
             SetStatus(error); Show(); Activate();
         });
         Closing += OnClosing;
-        Closed += (_, _) => { ThemeService.Changed -= OnThemeChanged; _statusTimer.Stop(); _hotkeys?.Dispose(); _tray?.Dispose(); _icon?.Dispose(); _recorder.Dispose(); };
+        Closed += (_, _) => { PinManager.CloseAll(); ThemeService.Changed -= OnThemeChanged; _statusTimer.Stop(); _hotkeys?.Dispose(); _tray?.Dispose(); _icon?.Dispose(); _recorder.Dispose(); };
     }
     private void ConfigureHotkeys()
     {
@@ -141,6 +141,11 @@ public partial class MainWindow : Window
         menu.Items.Add("开始 / 停止录屏", null, async (_, _) => await ToggleRecordingAsync());
         menu.Items.Add("暂停 / 继续录屏", null, (_, _) => TogglePause());
         menu.Items.Add("打开保存目录", null, (_, _) => OpenFolder());
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("隐藏全部贴图", null, (_, _) => PinManager.HideAll());
+        menu.Items.Add("恢复全部贴图", null, (_, _) => PinManager.RestoreAll());
+        menu.Items.Add("解除全部贴图穿透并恢复", null, (_, _) => PinManager.DisableClickThrough());
+        menu.Items.Add("关闭全部贴图", null, (_, _) => PinManager.CloseAll());
         menu.Items.Add(new Forms.ToolStripSeparator()); menu.Items.Add("退出", null, async (_, _) => await ExitAsync());
         _tray.ContextMenuStrip = menu; _tray.DoubleClick += (_, _) => ShowMain();
         _tray.BalloonTipClicked += (_, _) => ShowMain();

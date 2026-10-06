@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -116,8 +117,13 @@ internal static class UpgradeTests
                     int difference = Enumerable.Range(0, Math.Min(actual.Length, expected.Length)).FirstOrDefault(i => actual[i] != expected[i], -1);
                     Ensure(compatible != null && actual.SequenceEqual(expected), $"Repeated clipboard reads changed pixels or lost lossy quality: {format}, read {repeat}, size {compatible?.PixelWidth}x{compatible?.PixelHeight}, format {compatible?.Format}, first difference {difference}: {(difference >= 0 ? actual[difference] : -1)} / {(difference >= 0 ? expected[difference] : -1)}");
                 }
-                var dib = (MemoryStream)clipboard.GetData(DataFormats.Dib, false); var dibBytes = dib.ToArray(); File.WriteAllBytes(Path.Combine(Paths.TestRoot!, "clipboard.dib"), dibBytes);
-                Ensure(BitConverter.ToInt32(dibBytes, 0) is 12 or 40 or 108 or 124, "Unexpected DIB header: " + Convert.ToHexString(dibBytes[..Math.Min(20, dibBytes.Length)]));
+                // Inspect the Windows CF_DIB allocation itself. WPF's OLE
+                // stream projection can return a zero-filled buffer after a
+                // bitmap read even while the native allocation remains valid.
+                var dibBytes = ReadNativeDib(); File.WriteAllBytes(Path.Combine(Paths.TestRoot!, "clipboard.dib"), dibBytes);
+                Ensure(BitConverter.ToInt32(dibBytes, 0) is 12 or 40 or 108 or 124, $"Unexpected native DIB header for {format}: " + Convert.ToHexString(dibBytes[..Math.Min(20, dibBytes.Length)]));
+                var expectedDib = ImageExportService.Encode(ImageExportService.Decode(encoded, format), ScreenshotFormat.Bmp, 100)[14..];
+                Ensure(dibBytes.SequenceEqual(expectedDib), "Native DIB bytes do not match the selected image quality");
             }
         });
         await check("Screenshot save dialog follows defaults, temporarily switches quality/format, and writes correct file", async () =>
@@ -184,7 +190,7 @@ internal static class UpgradeTests
                     Find<ComboBox>(dialog, b => b.Name == "DefaultRecordingFormat").SelectedIndex = 2; Find<ComboBox>(dialog, b => b.Name == "DefaultRecordingQuality").SelectedIndex = 0;
                     var scroll = Find<ScrollViewer>(dialog, b => b.Content is StackPanel); scroll.ScrollToEnd(); dialog.UpdateLayout();
                     foreach (string theme in new[] { "Dark", "Light" }) { ThemeService.Apply(theme); UiChangeTests.Render(dialog, $"settings-formats-{theme.ToLowerInvariant()}.png"); }
-                    Find<Button>(dialog, b => (string?)b.Content == "保存设置").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); return Task.CompletedTask;
+                    Find<Button>(dialog, b => b.Name == "SaveSettings").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); return Task.CompletedTask;
                 });
                 var saved = Settings.Load(); Ensure(saved.ScreenshotFormat == ScreenshotFormat.WebP && saved.ScreenshotQuality == 73 && saved.RecordingFormat == RecordingFormat.Gif && saved.RecordingQuality == ExportQuality.Low && saved.ScreenshotHotkey == settings.ScreenshotHotkey, "Settings UI mixed defaults or changed hotkeys");
             }
@@ -198,6 +204,24 @@ internal static class UpgradeTests
         var source = BitmapSource.Create(width, height, 144, 144, PixelFormats.Bgra32, null, pixels, width * 4); source.Freeze(); return source;
     }
     internal static byte[] Bytes(BitmapSource image) { var converted = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0); var bytes = new byte[image.PixelWidth * image.PixelHeight * 4]; converted.CopyPixels(bytes, image.PixelWidth * 4, 0); return bytes; }
+    private static byte[] ReadNativeDib()
+    {
+        Ensure(OpenClipboard(IntPtr.Zero), "Cannot read native clipboard");
+        try
+        {
+            var handle = GetClipboardData(8); Ensure(handle != IntPtr.Zero, "Native CF_DIB absent");
+            var pointer = GlobalLock(handle); Ensure(pointer != IntPtr.Zero, "Native DIB cannot be locked");
+            try { var bytes = new byte[checked((int)GlobalSize(handle))]; Marshal.Copy(pointer, bytes, 0, bytes.Length); return bytes; }
+            finally { GlobalUnlock(handle); }
+        }
+        finally { CloseClipboard(); }
+    }
+    [DllImport("user32.dll")] private static extern bool OpenClipboard(IntPtr owner);
+    [DllImport("user32.dll")] private static extern bool CloseClipboard();
+    [DllImport("user32.dll")] private static extern IntPtr GetClipboardData(uint format);
+    [DllImport("kernel32.dll")] private static extern IntPtr GlobalLock(IntPtr memory);
+    [DllImport("kernel32.dll")] private static extern bool GlobalUnlock(IntPtr memory);
+    [DllImport("kernel32.dll")] private static extern UIntPtr GlobalSize(IntPtr memory);
     internal static T Find<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject
     { if (root is T item && predicate(item)) return item; for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) { try { return Find(VisualTreeHelper.GetChild(root, i), predicate); } catch (InvalidOperationException) { } } throw new InvalidOperationException("Control not found: " + typeof(T).Name); }
     internal static async Task WithDialogAsync(Window dialog, Func<Task> action)

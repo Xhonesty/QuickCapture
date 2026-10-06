@@ -11,6 +11,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (Array.IndexOf(e.Args, "--ocr-worker") == 0) { Shutdown(OcrService.RunWorker(e.Args)); return; }
         DispatcherUnhandledException += (_, args) =>
         {
             ErrorLog.Write(args.Exception);
@@ -39,7 +40,7 @@ public partial class App : Application
         try { new MainWindow().Show(); }
         catch (Exception ex) { ErrorLog.Write(ex); MessageBox.Show(ex.Message, "轻截启动失败"); Shutdown(1); }
     }
-    protected override void OnExit(ExitEventArgs e) { _instance?.Dispose(); base.OnExit(e); }
+    protected override void OnExit(ExitEventArgs e) { OcrService.CancelActive(); _instance?.Dispose(); base.OnExit(e); }
 }
 
 internal static class ErrorLog

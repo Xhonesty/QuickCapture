@@ -211,6 +211,21 @@ internal static class HotkeyCaptureTests
         try { SetCursorPos((int)Math.Round(start.X), (int)Math.Round(start.Y)); await Task.Delay(50); Send(2); await Task.Delay(60); SetCursorPos((int)Math.Round(end.X), (int)Math.Round(end.Y)); await Task.Delay(80); Send(4); await Task.Delay(80); }
         finally { Send(4); SetCursorPos(old.X, old.Y); }
     }
+    internal static async Task WheelAsync(Window window, Point point, int delta, bool control)
+    {
+        await ActivateAsync(window);
+        Ensure(GetForegroundWindow() == new WindowInteropHelper(window).Handle && window.IsActive && Keyboard.Modifiers == ModifierKeys.None, "Verification window is not foreground; no wheel input was sent");
+        var old = System.Windows.Forms.Cursor.Position;
+        void Send(INPUT input) => Ensure(SendInput(1, new[] { input }, Marshal.SizeOf<INPUT>()) == 1, "Wheel input failed");
+        try
+        {
+            SetCursorPos((int)Math.Round(point.X), (int)Math.Round(point.Y)); await Task.Delay(40);
+            if (control) { Send(InputFor(Key.LeftCtrl, false)); await Task.Delay(40); }
+            Send(new INPUT { Type = 0, Data = new INPUTUNION { Mouse = new MOUSEINPUT { Data = unchecked((uint)delta), Flags = 0x0800 } } });
+            await Task.Delay(120);
+        }
+        finally { if (control) Send(InputFor(Key.LeftCtrl, true)); SetCursorPos(old.X, old.Y); }
+    }
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { internal uint Type; internal INPUTUNION Data; }
     [StructLayout(LayoutKind.Explicit)] private struct INPUTUNION { [FieldOffset(0)] internal KEYBDINPUT Keyboard; [FieldOffset(0)] internal MOUSEINPUT Mouse; }
     [StructLayout(LayoutKind.Sequential)] private struct KEYBDINPUT { internal ushort VirtualKey, ScanCode; internal uint Flags, Time; internal IntPtr Extra; }

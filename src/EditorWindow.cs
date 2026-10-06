@@ -22,7 +22,7 @@ internal sealed class EditorWindow : Window
         var root = new DockPanel(); Content = root;
         var toolbar = editor.CreateToolbar(); toolbar.Margin = new Thickness(12); DockPanel.SetDock(toolbar, Dock.Top); root.Children.Add(toolbar);
         var bottom = new DockPanel(); DockPanel.SetDock(bottom, Dock.Bottom); root.Children.Add(bottom);
-        var hint = new TextBlock { Margin = new Thickness(16, 8, 16, 8), FontSize = UiDesign.Number("FontHelp"), Text = "T 原位文字 · Enter 换行 / Ctrl+Enter 完成 · 双击文字重编 · E 编辑标注 · K 调色 / 吸管 · Ctrl+Z 撤销", TextWrapping = TextWrapping.Wrap };
+        var hint = new TextBlock { Margin = new Thickness(16, 8, 16, 8), FontSize = UiDesign.Number("FontHelp"), Text = "T 原位文字 · D 步骤编号 · O 提取文字 · E 编辑标注 · K 调色 / 吸管 · Ctrl+Z 撤销", TextWrapping = TextWrapping.Wrap };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
         var zoom = new Slider { Minimum = 0.25, Maximum = 2, Value = Math.Min(1, Math.Min((Width - 50) / image.PixelWidth, (Height - 160) / image.PixelHeight)), Width = 140, Margin = new Thickness(12), ToolTip = "缩放预览（导出保持原始像素）" };
         DockPanel.SetDock(zoom, Dock.Right); bottom.Children.Add(zoom); bottom.Children.Add(hint);
@@ -43,18 +43,5 @@ internal sealed class EditorWindow : Window
         var scroll = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = viewport, Padding = new Thickness(12) };
         scroll.SetResourceReference(Control.BackgroundProperty, "EditorBackground"); root.Children.Add(scroll);
         PreviewKeyDown += (_, e) => { if (!e.Handled && !editor.EditingText && e.Key == Key.Escape) { e.Handled = true; Close(); } };
-    }
-}
-
-internal sealed class PinWindow : Window
-{
-    public PinWindow(BitmapSource image)
-    {
-        Ui.Theme(this);
-        Title = "轻截 · 贴图"; Topmost = true; ShowInTaskbar = false;
-        WindowStyle = WindowStyle.ToolWindow; Width = Math.Min(image.PixelWidth + 20, 650); Height = Math.Min(image.PixelHeight + 42, 500);
-        Content = new Image { Source = image, Stretch = Stretch.Uniform, ToolTip = "拖动移动 · 右键或 Esc 关闭" };
-        MouseLeftButtonDown += (_, _) => DragMove(); MouseRightButtonDown += (_, _) => Close();
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
     }
 }

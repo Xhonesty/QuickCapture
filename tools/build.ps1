@@ -8,6 +8,10 @@ $sdk = if (Test-Path -LiteralPath $localSdk) { $localSdk } else { (Get-Command d
 $env:DOTNET_CLI_HOME = Join-Path $projectRoot '.tools\cli-home'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
+$env:NUGET_HTTP_CACHE_PATH = Join-Path $projectRoot '.tools\http-cache'
+$env:TEMP = Join-Path $projectRoot '.tools\temp'
+$env:TMP = $env:TEMP
+New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
 $publishArgs = @('publish', (Join-Path $projectRoot 'src\QuickCapture.csproj'), '-c', 'Release', '-p:Platform=x64', '-r', 'win-x64', '--self-contained', 'true', '-o', $publishOutput, '-p:DebugType=None', '-p:DebugSymbols=false')
 if ($Offline) { $publishArgs += @('--source', (Join-Path $projectRoot '.tools\feed'), '-p:NuGetAudit=false') }
 & $sdk @publishArgs
@@ -29,11 +33,28 @@ if ((Test-Path -LiteralPath (Join-Path $mediaSource 'ffmpeg.exe')) -and (Test-Pa
     if (Test-Path -LiteralPath (Join-Path $mediaSource 'manifest.json')) { Copy-Item -LiteralPath (Join-Path $mediaSource 'manifest.json') -Destination $mediaDestination }
 } else { Write-Warning 'FFmpeg 未捆绑：运行 tools/setup-media.ps1 后重新构建；当前仍可录制并保存原生 MP4。' }
 $licenseDestination = Join-Path $publishOutput 'licenses'
+$ocrManifestPath = Join-Path $projectRoot 'vendor\ocr\manifest.json'
+$ocrManifest = Get-Content -LiteralPath $ocrManifestPath -Raw | ConvertFrom-Json
+$ocrDestination = Join-Path $publishOutput 'Tools\ocr\tessdata'
+New-Item -ItemType Directory -Path $ocrDestination -Force | Out-Null
+foreach ($model in $ocrManifest.models) {
+    $modelPath = Join-Path $projectRoot ('vendor\ocr\tessdata\' + $model.name)
+    if (-not (Test-Path -LiteralPath $modelPath) -or (Get-FileHash -LiteralPath $modelPath -Algorithm SHA256).Hash -ne $model.sha256) { throw 'OCR 模型缺失或校验失败，请运行 python tools/setup-ocr.py。' }
+    Copy-Item -LiteralPath $modelPath -Destination $ocrDestination -Force
+}
+Copy-Item -LiteralPath $ocrManifestPath -Destination (Join-Path $publishOutput 'Tools\ocr\manifest.json') -Force
+# QuickCapture targets x64; omit the wrapper's redundant x86 native binaries.
+$unusedOcrNative = Join-Path $publishOutput 'x86'
+if (Test-Path -LiteralPath $unusedOcrNative) {
+    $resolvedOcrNative = (Resolve-Path -LiteralPath $unusedOcrNative).Path
+    if ([IO.Path]::GetDirectoryName($resolvedOcrNative) -ne $publishOutput.TrimEnd('\')) { throw 'Unexpected OCR native output path.' }
+    Remove-Item -LiteralPath $resolvedOcrNative -Recurse -Force
+}
 New-Item -ItemType Directory -Path $licenseDestination -Force | Out-Null
 foreach ($licenseFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs\licenses') -File) { Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Force }
 $upgradeDocs = Join-Path $publishOutput 'docs'
 New-Item -ItemType Directory -Path $upgradeDocs -Force | Out-Null
-foreach ($document in @('feature-upgrade.md', 'in-place-text.md', 'panel-optimization.md', 'recording-preferences.md', 'design-spec.md', 'media-tools.md', 'verification.md', 'icon-processing.md')) {
+foreach ($document in @('office-tools.md', 'ocr-options.md', 'roadmap.md', 'feature-upgrade.md', 'in-place-text.md', 'panel-optimization.md', 'recording-preferences.md', 'design-spec.md', 'media-tools.md', 'verification.md', 'icon-processing.md')) {
     $documentationSource = Join-Path $projectRoot "docs\$document"
     if (Test-Path -LiteralPath $documentationSource) { Copy-Item -LiteralPath $documentationSource -Destination $upgradeDocs -Force }
 }

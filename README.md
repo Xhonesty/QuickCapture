@@ -1,13 +1,23 @@
 # 轻截 · QuickCapture
 
-轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.7.0**。
+轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.8.0**。
 
 ## 主要能力
 
-- **截图与标注**：区域、窗口、整个桌面截图；窗口吸附；箭头、形状、涂鸦、马赛克、文字；可撤销的二次裁剪与对象编辑。
+- **截图与标注**：区域、窗口、整个桌面截图；窗口吸附；箭头、形状、涂鸦、马赛克、文字、可编辑步骤编号；可撤销的二次裁剪与对象编辑。
 - **原位文字**：在截图上透明输入中文、英文和多行文字，实时预览字体、字号、颜色、粗细及对齐；完成后可以移动、删除或双击重新编辑。
+- **本地 OCR**：当前裁剪范围的简体中文、繁体中文与英文文字提取；可编辑结果、保留 / 合并换行和一键复制；后台识别可取消。
+- **贴图对照**：置顶图片、滚轮缩放、Ctrl+滚轮透明度、恢复原尺寸、鼠标穿透及托盘统一隐藏 / 恢复 / 解除穿透。
 - **录屏与导出**：区域、窗口、显示器录制；暂停 / 继续，系统声音与麦克风；时间裁切、画面裁剪、变速、静音，导出 MP4 / WebM / GIF。
 - **文件与日常操作**：截图支持 PNG / JPG / WebP / BMP，复制、自动保存、置顶贴图；最近文件、保存目录、全局快捷键、托盘和浅色 / 深色主题。
+
+## 本轮办公功能
+
+截图后按 `O` 提取文字，可直接修改并复制；按 `D` 连续添加步骤编号，按 `E` 选中后移动、缩放或删除，双击修改数字。编号面板可设置下一个数字，删除不会重排。贴图按 `P`，滚轮缩放、`Ctrl+滚轮` 调整透明度，右键打开菜单。开启穿透后，从托盘选择 **解除全部贴图穿透并恢复**。
+
+便携包已包含三种语言模型，识别不联网。首次源代码构建需运行 `python tools/setup-ocr.py` 下载固定 SHA-256 模型。详见 [使用说明](docs/office-tools.md)、[OCR 方案对照](docs/ocr-options.md) 和 [后续路线图](docs/roadmap.md)。
+
+<p align="center"><img src="docs/images/office-ocr-light.png" width="340" alt="本地 OCR 可编辑结果面板" /> <img src="docs/images/office-pin-menu-dark.png" width="250" alt="深色贴图菜单与穿透恢复提示" /></p>
 
 ## 界面预览
 
@@ -34,7 +44,7 @@ MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显
 
 ## 获取与运行
 
-下载 [v0.7.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.7.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.7.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
+下载 [v0.8.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.8.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.8.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
 
 使用便携包时，解压整个文件夹并运行 `QuickCapture/QuickCapture.exe`。自带 .NET 运行时和 FFmpeg / ffprobe，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
 
@@ -43,6 +53,7 @@ MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显
 ```powershell
 git clone https://github.com/Xhonesty/QuickCapture.git
 cd QuickCapture
+python tools/setup-ocr.py
 .\tools\setup-media.ps1
 .\tools\build.ps1
 .\dist\QuickCapture.exe
@@ -67,7 +78,7 @@ cd QuickCapture
 - 截图和录屏分别提供“自动吸附窗口”，默认开启：悬停预选窗口，单击确认；按住拖动始终自由框选。截图窗口跨屏时仅采集当前显示器内的部分。
 - 窗口模式提供实时缩略图与目标预览，显示标题及应用；单击选择后按 Enter、双击或点击“选择”确认。最小化、关闭或已知受保护窗口显示说明，Esc 取消。
 - 裁剪工具 `C`：拖动八个手柄调整大小，拖动内部移动；方向键移动 1 原始像素，`Shift+方向键` 移动 10。裁剪外标注只隐藏，可扩大范围或撤销恢复。
-- 工具快捷键：`R` 形状、`E` 选择对象、`A` 箭头、`T` 文字、`B` 涂鸦、`M` 马赛克、`K` 调色盘、`Z` / `Y` 撤销 / 重做、`P` 贴图、`N` 重新框选、`S` 保存、`V` 复制。正常文字输入时不会触发工具快捷键。
+- 工具快捷键：`R` 形状、`E` 选择对象、`A` 箭头、`T` 文字、`D` 步骤编号、`O` 提取文字、`B` 涂鸦、`M` 马赛克、`K` 调色盘、`Z` / `Y` 撤销 / 重做、`P` 贴图、`N` 重新框选、`S` 保存、`V` 复制。正常文字输入时不会触发工具快捷键。
 - 文字样式支持 Microsoft YaHei UI、SimSun、Segoe UI、Arial、Consolas；提供 12–144 原始像素的预设字号、粗体及左对齐 / 居中 / 右对齐。编辑框保持透明，样式、调色盘与吸管的修改即时更新预览。
 - 选择对象后可移动、缩放、方向键微调、Delete 删除。文字编辑按一次确认记录一个撤销步骤；空白内容确认不创建新对象，取消已有文字的编辑恢复原内容。
 - 调色盘含预设、最近颜色、HSV、HEX、透明度以及画布 / 屏幕吸管；吸管单击确认，Esc 或右键取消。涂鸦及马赛克按钮悬停打开粗细 / 模式选项，单次笔迹可整体撤销。
@@ -106,13 +117,14 @@ cd QuickCapture
 - 区域录屏使用 Desktop Duplication 裁剪，避免 Windows.Graphics.Capture 围住整块显示器的系统边框。窗口及整屏录制仍可能显示对应目标的系统捕获边框。
 - 区域录制边框绘制在选区外；边框和计时条还通过 Windows 排除捕获接口避免入镜，Windows 10 2004 及以上支持该排除行为。
 - 麦克风使用 Windows 默认输入设备；需在 Windows 隐私设置中允许桌面应用访问麦克风。音频设备变更或断开后请停止并重新开始录制。
-- 当前未提供滚动截图、OCR、多段拼接、提取音频、MKV / MOV、云端分享和开机自启。
+- 当前未提供滚动截图、OCR 翻译 / 表格 / 公式、多段拼接、提取音频、MKV / MOV、云端分享和开机自启。
 
 ## 开发与构建
 
 安装 .NET 10 SDK 后，在项目目录运行：
 
 ```powershell
+python tools/setup-ocr.py
 .\tools\setup-media.ps1
 .\tools\build.ps1
 ```
@@ -137,6 +149,8 @@ cd QuickCapture
 | `RecordingFrame.cs` | 精确选区录屏边框、鼠标穿透与捕获排除 |
 | `Assets/app.png` / `app.ico` | 去白边的透明图标及 16–256 像素多尺寸 ICO；处理提示词见 `docs/icon-processing.md` |
 | `CaptureService.cs` / `RecorderService.cs` | 原生采集、实时编码、音频与文件完成 |
+| `OcrService.cs` / `OcrWindow.cs` | 本地识别工作进程、取消与可编辑结果 |
+| `PinWindow.cs` / `PinMenuStyles.xaml` | 贴图集中管理、缩放透明度、穿透与恢复 |
 | `HotkeyService.cs` / `Settings.cs` | 快捷键注册和本地设置 |
 | `CropHandles.cs` / `ToolCatalog.cs` / `IconSet.cs` | 二次裁剪、配置驱动图标与工具快捷键 |
 | `ImageExportService.cs` / `ScreenshotSaveWindow.cs` | 四种图片格式、质量及剪贴板兼容性 |
@@ -147,6 +161,14 @@ cd QuickCapture
 | `DesignTokens.xaml` / `UiDesign.cs` | 统一布局与控件规范，见 [设计规范表](docs/design-spec.md) |
 
 ## 集成验证
+
+v0.8.0 增加办公功能专项入口，自动验证结果与边界见 [验收记录](docs/verification.md)：
+
+```powershell
+.\dist\QuickCapture.exe --self-test --office-only --pointer
+```
+
+以下保留 v0.7.0 及既有验证入口。
 
 本次发布验证设置尺寸、标题、帧率同步、取消 / 保存、旧配置迁移、两主题和所有可选帧率的真实导出，并回归媒体编辑与导出流程：
 

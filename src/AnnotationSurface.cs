@@ -9,10 +9,10 @@ using System.Windows.Media.Imaging;
 namespace QuickCapture;
 
 // Keep the original enum values and Rectangle record representation compatible.
-internal enum AnnotationTool { Arrow, Rectangle, Text, Mosaic, Freehand, MosaicBrush, Crop, Select }
+internal enum AnnotationTool { Arrow, Rectangle, Text, Mosaic, Freehand, MosaicBrush, Crop, Select, Step }
 internal enum AnnotationShape { Rectangle, RoundedRectangle, Ellipse, Triangle, Diamond }
 internal sealed record Annotation(AnnotationTool Tool, Point Start, Point End, Color Color, string Text = "", IReadOnlyList<Point>? Points = null, double Width = 3, AnnotationShape Shape = AnnotationShape.Rectangle, Color? FillColor = null,
-    string FontFamily = "Microsoft YaHei UI", double FontSize = 24, bool Bold = false, TextAlignment Alignment = TextAlignment.Left, double TextWidth = 0);
+    string FontFamily = "Microsoft YaHei UI", double FontSize = 24, bool Bold = false, TextAlignment Alignment = TextAlignment.Left, double TextWidth = 0, int StepNumber = 1);
 
 internal static class AnnotationGeometry
 {
@@ -62,6 +62,12 @@ internal static class AnnotationGeometry
     internal static Annotation Move(Annotation a, Vector delta) => a with { Start = a.Start + delta, End = a.End + delta, Points = a.Points?.Select(p => p + delta).ToArray() };
     internal static Annotation Resize(Annotation a, Rect before, Rect after)
     {
+        if (a.Tool == AnnotationTool.Step)
+        {
+            double side = Math.Clamp(Math.Min(after.Width, after.Height), 16, 240);
+            var start = new Point(after.Left, after.Top);
+            return a with { Start = start, End = start + new Vector(side, side) };
+        }
         Point Map(Point p) => new(after.Left + (p.X - before.Left) * after.Width / Math.Max(1, before.Width), after.Top + (p.Y - before.Top) * after.Height / Math.Max(1, before.Height));
         return a with { Start = Map(a.Start), End = Map(a.End), Points = a.Points?.Select(Map).ToArray() };
     }
@@ -128,6 +134,7 @@ internal sealed class AnnotationSurface : FrameworkElement
             var item = _items[i]; var bounds = AnnotationGeometry.Bounds(item); bounds.Inflate(tolerance, tolerance);
             if (!bounds.Contains(point)) continue;
             bool hit = item.Tool is AnnotationTool.Text or AnnotationTool.Mosaic;
+            if (item.Tool == AnnotationTool.Step) hit = new EllipseGeometry(AnnotationGeometry.Bounds(item)).FillContains(point);
             if (item.Tool == AnnotationTool.Rectangle) { var geometry = AnnotationGeometry.Shape(item.Shape, AnnotationGeometry.Bounds(item)); hit = geometry.FillContains(point) || geometry.StrokeContains(new Pen(Brushes.Black, item.Width + tolerance * 2), point); }
             if (item.Tool is AnnotationTool.Freehand or AnnotationTool.MosaicBrush)
             {
@@ -236,6 +243,19 @@ internal sealed class AnnotationSurface : FrameworkElement
                 using (var c = triangle.Open()) { c.BeginFigure(a.End, true, true); c.LineTo(back + normal * 7, true, false); c.LineTo(back - normal * 7, true, false); }
                 dc.DrawGeometry(brush, null, triangle); break;
             case AnnotationTool.Text: dc.DrawText(AnnotationGeometry.Text(a, brush), a.Start); break;
+            case AnnotationTool.Step:
+                // Opaque fill, contrasting number and two rings remain legible on
+                // both bright and dark backgrounds, regardless of palette alpha.
+                double diameter = Math.Min(bounds.Width, bounds.Height);
+                var center = new Point(bounds.Left + diameter / 2, bounds.Top + diameter / 2);
+                var fillBrush = new SolidColorBrush(Color.FromRgb(a.Color.R, a.Color.G, a.Color.B));
+                dc.DrawEllipse(Brushes.White, new Pen(Brushes.Black, 1), center, diameter / 2, diameter / 2);
+                dc.DrawEllipse(fillBrush, null, center, Math.Max(1, diameter / 2 - 2.5), Math.Max(1, diameter / 2 - 2.5));
+                var foreground = (a.Color.R * 0.299 + a.Color.G * 0.587 + a.Color.B * 0.114) > 155 ? Brushes.Black : Brushes.White;
+                var number = AnnotationGeometry.Text(a with { Text = a.StepNumber.ToString(CultureInfo.InvariantCulture), FontFamily = "Segoe UI", FontSize = diameter * 0.53, Bold = true, TextWidth = 0, Alignment = TextAlignment.Left }, foreground);
+                if (number.Width > diameter * 0.72) number.SetFontSize(diameter * 0.53 * diameter * 0.72 / number.Width);
+                dc.DrawText(number, new Point(center.X - number.Width / 2, center.Y - number.Height / 2));
+                break;
             case AnnotationTool.Mosaic: DrawMosaic(dc, new RectangleGeometry(bounds)); break;
             case AnnotationTool.Freehand:
             case AnnotationTool.MosaicBrush:

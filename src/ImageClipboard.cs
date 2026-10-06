@@ -1,10 +1,10 @@
 using System;
 using System.IO;
-using System.Linq;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 
 namespace QuickCapture;
 
@@ -12,35 +12,61 @@ internal static class ImageClipboard
 {
     internal static async Task SetAsync(byte[] encoded, byte[] bmp, string registered, string mime)
     {
-        var data = new FreshImageData(encoded, bmp, registered, mime);
-        for (int attempt = 0; ; attempt++)
+        // Fully rendered native formats remain readable after repeated BMP
+        // reads and after the application exits; Windows owns transferred data.
+        using var owner = new HwndSource(new HwndSourceParameters("QuickCapture clipboard") { ParentWindow = new IntPtr(-3), WindowStyle = 0 });
+        var memory = new List<(uint Format, IntPtr Handle)>(); IntPtr bitmapHandle = IntPtr.Zero;
+        bool opened = false;
+        try
         {
-            try { Clipboard.SetDataObject(data, true); return; }
-            catch (COMException) when (attempt < 4) { await Task.Delay(80); }
+            memory.Add((Format(registered), Allocate(encoded)));
+            memory.Add((Format(mime), Allocate(encoded)));
+            memory.Add((8, Allocate(bmp[14..])));
+            using (var stream = new MemoryStream(bmp, false))
+            using (var bitmap = new System.Drawing.Bitmap(stream)) bitmapHandle = bitmap.GetHbitmap();
+            for (int attempt = 0; ; attempt++)
+            {
+                if (OpenClipboard(owner.Handle)) { opened = true; break; }
+                if (attempt >= 4) throw new Win32Exception(Marshal.GetLastWin32Error(), "剪贴板正被其他程序占用，请重试。");
+                await Task.Delay(80);
+            }
+            if (!EmptyClipboard()) throw new Win32Exception(Marshal.GetLastWin32Error());
+            for (int i = 0; i < memory.Count; i++)
+            {
+                var (format, handle) = memory[i];
+                if (SetClipboardData(format, handle) == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+                memory[i] = (format, IntPtr.Zero);
+            }
+            if (SetClipboardData(2, bitmapHandle) == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            bitmapHandle = IntPtr.Zero;
+        }
+        finally
+        {
+            if (opened) CloseClipboard();
+            foreach (var (_, handle) in memory) if (handle != IntPtr.Zero) GlobalFree(handle);
+            if (bitmapHandle != IntPtr.Zero) Native.DeleteObject(bitmapHandle);
         }
     }
-
-    // OLE can request a format more than once while persisting clipboard data.
-    // Every request gets a fresh stream at position zero, so earlier reads cannot
-    // consume a later payload. One OLE transaction persists all formats on exit.
-    private sealed class FreshImageData : IDataObject
+    private static uint Format(string name)
     {
-        private readonly byte[] _encoded, _dib;
-        private readonly string _registered, _mime;
-        private readonly BitmapSource _bitmap;
-        internal FreshImageData(byte[] encoded, byte[] bmp, string registered, string mime)
-        { _encoded = encoded; _dib = bmp[14..]; _registered = registered; _mime = mime; _bitmap = ImageExportService.Decode(bmp, ScreenshotFormat.Bmp); }
-        public object? GetData(string format, bool autoConvert) => format == DataFormats.Bitmap ? _bitmap : format == DataFormats.Dib ? new MemoryStream(_dib, false) : format == _registered || format == _mime ? new MemoryStream(_encoded, false) : null;
-        public object? GetData(string format) => GetData(format, true);
-        public object? GetData(Type format) => GetData(format.FullName!);
-        public bool GetDataPresent(string format, bool autoConvert) => GetFormats(false).Contains(format);
-        public bool GetDataPresent(string format) => GetDataPresent(format, true);
-        public bool GetDataPresent(Type format) => GetDataPresent(format.FullName!);
-        public string[] GetFormats(bool autoConvert) => new[] { _registered, _mime, DataFormats.Bitmap, DataFormats.Dib };
-        public string[] GetFormats() => GetFormats(true);
-        public void SetData(object data) => throw new NotSupportedException();
-        public void SetData(Type format, object data) => throw new NotSupportedException();
-        public void SetData(string format, object data) => throw new NotSupportedException();
-        public void SetData(string format, object data, bool autoConvert) => throw new NotSupportedException();
+        uint id = RegisterClipboardFormat(name); return id != 0 ? id : throw new Win32Exception(Marshal.GetLastWin32Error());
     }
+    private static IntPtr Allocate(byte[] bytes)
+    {
+        var memory = GlobalAlloc(0x42, (UIntPtr)bytes.Length); if (memory == IntPtr.Zero) throw new OutOfMemoryException();
+        var pointer = GlobalLock(memory);
+        if (pointer == IntPtr.Zero) { GlobalFree(memory); throw new Win32Exception(Marshal.GetLastWin32Error()); }
+        try { Marshal.Copy(bytes, 0, pointer, bytes.Length); }
+        catch { GlobalUnlock(memory); GlobalFree(memory); throw; }
+        GlobalUnlock(memory); return memory;
+    }
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool OpenClipboard(IntPtr owner);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool EmptyClipboard();
+    [DllImport("user32.dll")] private static extern bool CloseClipboard();
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetClipboardData(uint format, IntPtr data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern uint RegisterClipboardFormat(string name);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr GlobalLock(IntPtr memory);
+    [DllImport("kernel32.dll")] private static extern bool GlobalUnlock(IntPtr memory);
+    [DllImport("kernel32.dll")] private static extern IntPtr GlobalFree(IntPtr memory);
 }

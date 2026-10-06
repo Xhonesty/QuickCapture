@@ -60,6 +60,12 @@ internal sealed class ScreenshotEditor : IDisposable
     private CheckBox? _textWeight;
     private Button? _confirmText, _cancelText;
     private bool _syncingText;
+    private int _nextStep;
+    private TextBox? _stepValue, _stepStart;
+    private Button? _applyStep;
+    private ComboBox? _stepSizes;
+    private bool _syncingStep;
+    private OcrWindow? _ocr;
     internal Canvas TextOverlay => _textEditor.Overlay;
     internal TextBox? TextInput => EditingText ? _textEditor.Input : null;
     internal bool EditingText => _textEditor.Active;
@@ -78,10 +84,14 @@ internal sealed class ScreenshotEditor : IDisposable
     public ScreenshotEditor(Window owner, BitmapSource image, Settings settings, Action<string> saved, Action complete, Int32Rect? crop = null)
     {
         _owner = owner; _settings = settings; _saved = saved; _complete = complete;
+        _nextStep = settings.StepStart;
         _inputMethodEnabled = InputMethod.GetIsInputMethodEnabled(owner);
         // Tool gestures bypass IME; the in-place TextBox explicitly enables it.
         InputMethod.SetIsInputMethodEnabled(owner, false);
         Surface = new AnnotationSurface(image, crop) { Cursor = Cursors.SizeAll };
+        // IsInputMethodEnabled does not inherit from the window. A focused
+        // canvas must disable it explicitly, while text inputs enable it.
+        InputMethod.SetIsInputMethodEnabled(Surface, false);
         _textEditor = new InPlaceTextEditor(Surface);
         _textEditor.Changed += () => { SyncTextOptions(); UpdateButtons(); RefreshColors(); };
         Handles = new CropHandles(Surface, owner, () => SelectTool(AnnotationTool.Crop));
@@ -131,7 +141,7 @@ internal sealed class ScreenshotEditor : IDisposable
         foreach (var definition in _definitions.Where(d => d.Options != null))
         {
             var flyout = new HoverToolOptions(_buttons[definition.Id], definition.Options!(), () =>
-            { foreach (var (id, other) in _flyouts) if (id != definition.Id) other.Hide(); }, hover: definition.Id is not ("color" or "text"), dismissed: () => _textEditor.Focus());
+            { foreach (var (id, other) in _flyouts) if (id != definition.Id) other.Hide(); }, hover: definition.Id is not ("color" or "text" or "step"), dismissed: () => _textEditor.Focus());
             _flyouts[definition.Id] = flyout; if (definition.Tool is { } tool) _options[tool] = flyout;
         }
         _confirmText = Ui.Button("完成文字", ConfirmText); _cancelText = Ui.Button("取消文字", CancelText);
@@ -170,6 +180,7 @@ internal sealed class ScreenshotEditor : IDisposable
     private void RefreshColors()
     {
         SyncTextOptions();
+        SyncStepOptions();
         bool fill = _palette?.EditingFill == true && CanEditFill;
         Color color = fill ? CurrentFill ?? CurrentColor : CurrentColor;
         _palette?.SetCurrent(color, CanEditFill, CurrentFill != null);
@@ -197,7 +208,18 @@ internal sealed class ScreenshotEditor : IDisposable
     internal void ShowShapes() { if (Surface.Selected?.Tool != AnnotationTool.Rectangle) SelectTool(AnnotationTool.Rectangle); if (_flyouts.TryGetValue("rectangle", out var shapes)) shapes.Show(); }
     internal void Undo() { CancelText(); CancelStroke(); Surface.Undo(); }
     internal void Redo() { CancelText(); CancelStroke(); Surface.Redo(); }
-    internal void Pin() { if (!FinishText()) return; new PinWindow(Surface.Export()).Show(); _complete(); }
+    internal void Pin() { if (!FinishText()) return; PinManager.Create(Surface.Export(), _settings, _saved); _complete(); }
+    internal void ExtractText()
+    {
+        if (!FinishText()) return; CancelStroke(); HideOptions();
+        if (_ocr != null) { _ocr.Activate(); return; }
+        _ocr = new OcrWindow(_owner, OcrImage, _settings);
+        _ocr.Closed += (_, _) => _ocr = null; _ocr.Show();
+    }
+    internal BitmapSource OcrImage()
+    {
+        var image = new CroppedBitmap(Surface.Original, Surface.CropBounds); image.Freeze(); return image;
+    }
     internal void Complete() { if (EditingText) CancelText(); else _complete(); }
     public void SelectTool(AnnotationTool tool)
     {
@@ -267,6 +289,69 @@ internal sealed class ScreenshotEditor : IDisposable
         _textWeight.IsChecked = draft?.Bold ?? _textBold;
         _textAlignments.SelectedIndex = (draft?.Alignment ?? _textAlignment) switch { TextAlignment.Center => 1, TextAlignment.Right => 2, _ => 0 };
         _syncingText = false;
+    }
+    internal int NextStep => _nextStep;
+    internal void AddStep(Point point)
+    {
+        if (_nextStep > 9999) throw new InvalidOperationException("编号已达到 9999，请在步骤编号面板设置新的起始数字。");
+        double side = Math.Min(_settings.StepSize, Math.Min(Surface.Width, Surface.Height));
+        var start = new Point(Math.Clamp(point.X - side / 2, 0, Surface.Width - side), Math.Clamp(point.Y - side / 2, 0, Surface.Height - side));
+        Surface.Add(new(AnnotationTool.Step, start, start + new Vector(side, side), _color, StepNumber: _nextStep));
+        _nextStep++; SyncStepOptions();
+    }
+    internal void ResetStepStart(int value)
+    {
+        if (value is < 1 or > 9999) throw new ArgumentException("编号范围为 1–9999。");
+        _nextStep = _settings.StepStart = value; _settings.Save(); SyncStepOptions();
+    }
+    internal void SetStepNumber(int value)
+    {
+        if (value is < 1 or > 9999) throw new ArgumentException("编号范围为 1–9999。");
+        if (Surface.Selected is { Tool: AnnotationTool.Step } selected) Surface.SetSelected(selected with { StepNumber = value });
+    }
+    internal void ShowStepOptions()
+    {
+        if (Surface.Selected?.Tool != AnnotationTool.Step) SelectTool(AnnotationTool.Step);
+        SyncStepOptions(); if (_flyouts.TryGetValue("step", out var options)) options.Show();
+    }
+    internal StackPanel CreateStepOptions()
+    {
+        var panel = new StackPanel { Width = 220 };
+        panel.Children.Add(OptionLabel("步骤编号 · 连续单击添加"));
+        _stepSizes = new ComboBox { Name = "StepSize", ItemsSource = new[] { 16, 24, 32, 40, 48, 64, 96, 128, 160 }, SelectedItem = _settings.StepSize, ToolTip = "编号直径（原始像素）", Margin = new Thickness(0, 0, 0, 8) }; panel.Children.Add(_stepSizes);
+        _stepSizes.SelectionChanged += (_, _) =>
+        {
+            if (_syncingStep || _stepSizes.SelectedItem is not int size) return;
+            _settings.StepSize = size;
+            if (Surface.Selected is { Tool: AnnotationTool.Step } selected)
+            {
+                var bounds = AnnotationGeometry.Bounds(selected); double side = Math.Min(size, Math.Min(Surface.SourceWidth, Surface.SourceHeight));
+                var start = new Point(Math.Clamp(bounds.Left + (bounds.Width - side) / 2, 0, Surface.SourceWidth - side), Math.Clamp(bounds.Top + (bounds.Height - side) / 2, 0, Surface.SourceHeight - side));
+                Surface.SetSelected(selected with { Start = start, End = start + new Vector(side, side) });
+            }
+            _settings.Save();
+        };
+        panel.Children.Add(OptionLabel("选中编号的数字"));
+        _stepValue = new TextBox { Name = "StepNumber", ToolTip = "选中编号的新数字", Margin = new Thickness(0, 0, 0, 6) }; panel.Children.Add(_stepValue);
+        _applyStep = Ui.Button("修改选中数字", () => { try { SetStepNumber(ParseStep(_stepValue.Text)); } catch (Exception ex) { Ui.Error(_owner, ex); } }); panel.Children.Add(_applyStep);
+        panel.Children.Add(OptionLabel("下一个编号 / 重置起始数字"));
+        _stepStart = new TextBox { Name = "StepStart", Margin = new Thickness(0, 0, 0, 6) }; panel.Children.Add(_stepStart);
+        panel.Children.Add(Ui.Button("设置起始数字", () => { try { ResetStepStart(ParseStep(_stepStart.Text)); } catch (Exception ex) { Ui.Error(_owner, ex); } }));
+        panel.Children.Add(Ui.Button("编号颜色 / 吸管", ShowColors));
+        panel.Children.Add(OptionLabel("E 移动 / 缩放 · Delete 删除\n双击编号修改数字 · 删除不重排"));
+        SyncStepOptions(); return panel;
+    }
+    private static int ParseStep(string text) => int.TryParse(text, out int value) && value is >= 1 and <= 9999 ? value : throw new ArgumentException("请输入 1–9999 的整数。");
+    private void SyncStepOptions()
+    {
+        if (_stepValue == null || _stepStart == null || _stepSizes == null) return;
+        _syncingStep = true;
+        var selected = Surface.Selected is { Tool: AnnotationTool.Step } step ? step : null;
+        _stepValue.IsEnabled = selected != null; _stepValue.Text = selected?.StepNumber.ToString() ?? "";
+        if (_applyStep != null) _applyStep.IsEnabled = selected != null;
+        _stepStart.Text = _nextStep.ToString();
+        _stepSizes.SelectedItem = selected != null ? (int)Math.Round(AnnotationGeometry.Bounds(selected).Width) : _settings.StepSize;
+        _syncingStep = false;
     }
     internal StackPanel CreateShapeOptions()
     {
@@ -345,6 +430,7 @@ internal sealed class ScreenshotEditor : IDisposable
         if (EditingText && !FinishText()) return;
         if (e.ClickCount == 2 && Surface.SelectAt(point, 3 / Surface.DisplayScale.X) && Surface.Selected is { Tool: AnnotationTool.Text } text)
         { BeginText(point, text); return; }
+        if (e.ClickCount == 2 && Surface.Selected is { Tool: AnnotationTool.Step }) { SelectTool(AnnotationTool.Select); ShowStepOptions(); return; }
         if (Tool == AnnotationTool.Select)
         {
             _objectHandle = Surface.SelectedHandle(point);
@@ -353,6 +439,7 @@ internal sealed class ScreenshotEditor : IDisposable
             return;
         }
         Surface.Deselect();
+        if (Tool == AnnotationTool.Step) { AddStep(point); return; }
         if (Tool == AnnotationTool.Crop)
         {
             _cropBefore = Surface.CropBounds; _cropPointer = e.GetPosition(_owner); _cropScale = CropHandles.ScaleInOwner(Surface, _owner); Surface.CaptureMouse(); return;
@@ -497,6 +584,7 @@ internal sealed class ScreenshotEditor : IDisposable
     }
     public void Dispose()
     {
+        _ocr?.Close(); _ocr = null;
         _textEditor.Cancel();
         _eyedropper.Dispose();
         _owner.PreviewKeyDown -= KeyDown;
