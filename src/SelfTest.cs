@@ -45,6 +45,11 @@ internal static class SelfTest
         if (Array.IndexOf(args, "--office-only") >= 0)
         {
             await OfficeToolsTests.RunAsync(Check, Array.IndexOf(args, "--pointer") >= 0);
+            // Synthetic menu clicks may retain native mouse capture until the
+            // dispatcher processes closing popups. Release it while the WPF
+            // input worker is still alive, before application shutdown.
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             return failures == 0 ? 0 : 1;
         }
         if (Array.IndexOf(args, "--preferences-only") >= 0)
