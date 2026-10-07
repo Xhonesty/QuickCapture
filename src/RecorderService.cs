@@ -36,6 +36,7 @@ internal sealed class RecorderService : IDisposable
     public event Action<RecordingState>? StateChanged;
     public event Action<string>? Completed;
     public event Action<string>? Failed;
+    internal AudioMonitor Audio { get; } = new();
 
     internal static ScreenRect RelativeCrop(SavedRegion region, System.Drawing.Rectangle monitor)
         => new(region.X - monitor.X, region.Y - monitor.Y, region.Width, region.Height);
@@ -55,9 +56,11 @@ internal sealed class RecorderService : IDisposable
             SourceRect = RelativeCrop(region, screen.Bounds)
         };
     }
-    public Task StartAsync(RecordingSourceBase source, Settings settings, string finalPath)
+    public async Task StartAsync(RecordingSourceBase source, Settings settings, string finalPath)
     {
         if (IsBusy) throw new InvalidOperationException("已有录制正在进行。");
+        await Audio.StartAsync(settings);
+        if (settings.Microphone && !Audio.Read(true).Ready || settings.SystemAudio && !Audio.Read(false).Ready) throw new InvalidOperationException("声音设备不可用，请重新选择并检测。");
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
         _partial = finalPath + ".partial.mp4"; _final = finalPath;
         _complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -85,8 +88,8 @@ internal sealed class RecorderService : IDisposable
         options.VideoEncoderOptions.IsThrottlingDisabled = false;
         options.VideoEncoderOptions.IsMp4FastStartEnabled = true;
         options.AudioOptions.IsAudioEnabled = settings.SystemAudio || settings.Microphone;
-        if (settings.SystemAudio) options.AudioOptions.AudioSources.Add(LoopbackAudioSource.Default);
-        if (settings.Microphone) options.AudioOptions.AudioSources.Add(CaptureAudioSource.Default);
+        if (settings.SystemAudio) options.AudioOptions.AudioSources.Add(new LoopbackAudioSource(Audio.SystemId));
+        if (settings.Microphone) options.AudioOptions.AudioSources.Add(new CaptureAudioSource(Audio.MicrophoneId));
         options.MouseOptions.IsMousePointerEnabled = settings.Cursor;
         Directory.CreateDirectory(Paths.Data);
         options.LogOptions.IsLogEnabled = true;
@@ -160,7 +163,7 @@ internal sealed class RecorderService : IDisposable
             };
             _recorder.OnRecordingFailed += (_, e) => { lock (_gate) if (session != _session) return; Fail(e.Error); };
             _recorder.Record(_partial);
-            return _started.Task;
+            await _started.Task;
         }
         catch (Exception ex) { Fail(ex.Message); throw; }
     }
@@ -235,6 +238,7 @@ internal sealed class RecorderService : IDisposable
     }
     public void Dispose()
     {
+        Audio.Dispose();
         lock (_commandGate)
         {
             Recorder? recorder;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,10 +11,10 @@ namespace QuickCapture;
 
 internal sealed record VideoInfo(double Duration, int Width, int Height, double Fps, bool HasAudio, string VideoCodec = "", string AudioCodec = "");
 internal sealed record VideoExportRequest(string Source, string Destination, RecordingFormat Format, ExportQuality Quality,
-    double Start, double End, double Speed = 1, bool Mute = false, int GifFps = 15, ExportQuality SourceQuality = ExportQuality.Medium, bool Overwrite = false, VideoCrop? Crop = null, int? FramesPerSecond = null)
+    double Start, double End, double Speed = 1, bool Mute = false, int GifFps = 15, ExportQuality SourceQuality = ExportQuality.Medium, bool Overwrite = false, VideoCrop? Crop = null, int? FramesPerSecond = null, IReadOnlyList<VideoRange>? Deleted = null)
 {
-    internal double OutputDuration => (End - Start) / Speed;
-    internal bool OriginalMp4(VideoInfo info) => Format == RecordingFormat.Mp4 && (FramesPerSecond == null || Math.Abs(FramesPerSecond.Value - info.Fps) < 0.001) && (Crop == null || Crop.IsFullFrame(info)) && Start <= 0.0001 && End >= info.Duration - 0.0001 && Speed == 1 && !Mute && Quality == SourceQuality && Path.GetExtension(Source).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
+    internal double OutputDuration => VideoCuts.Kept(Start, End, Deleted).Sum(r => r.End - r.Start) / Speed;
+    internal bool OriginalMp4(VideoInfo info) => (Deleted == null || Deleted.Count == 0) && Format == RecordingFormat.Mp4 && (FramesPerSecond == null || Math.Abs(FramesPerSecond.Value - info.Fps) < 0.001) && (Crop == null || Crop.IsFullFrame(info)) && Start <= 0.0001 && End >= info.Duration - 0.0001 && Speed == 1 && !Mute && Quality == SourceQuality && Path.GetExtension(Source).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
 }
 
 internal static class VideoExportService
@@ -49,6 +50,9 @@ internal static class VideoExportService
         if (request.GifFps < 5 || request.GifFps > 30) throw new ArgumentException("GIF 帧率需为 5–30 FPS。");
         if (request.FramesPerSecond is int fps && Array.IndexOf(RecordingFrameRates.For(request.Format), fps) < 0) throw new ArgumentException("不支持该格式的导出帧率。");
         request.Crop?.Validate(info);
+        var normalized = VideoCuts.Normalize(request.Deleted, info.Duration, info.Fps);
+        if (request.Deleted != null && !normalized.SequenceEqual(request.Deleted)) throw new ArgumentException("删除边界必须按原片帧率对齐并合并重叠区间。");
+        if (request.OutputDuration * request.Speed < Math.Min(1 / info.Fps, info.Duration) - .000001) throw new ArgumentException("至少保留一帧，不能导出空视频。");
         if (Path.GetFullPath(request.Source).Equals(Path.GetFullPath(request.Destination), StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("导出目标不能覆盖正在编辑的原始录屏，请使用其他文件名。");
         if (Path.GetExtension(request.Destination).ToLowerInvariant() != "." + Extension(request.Format)) throw new ArgumentException("导出文件扩展名与格式不一致。");
         if (File.Exists(request.Destination) && !request.Overwrite) throw new IOException("目标文件已存在。");
@@ -57,7 +61,23 @@ internal static class VideoExportService
     internal static IReadOnlyList<string> Arguments(VideoExportRequest request, VideoInfo info, string temp)
     {
         var args = new List<string> { "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", request.Source };
+        bool audio = info.HasAudio && !request.Mute && request.Format != RecordingFormat.Gif;
+        string prefix = "", videoInput = "[0:v:0]", audioInput = "[0:a:0]";
+        if (request.Deleted is { Count: > 0 })
+        {
+            var kept = VideoCuts.Kept(request.Start, request.End, request.Deleted);
+            var streams = new System.Text.StringBuilder();
+            for (int i = 0; i < kept.Length; i++)
+            {
+                prefix += $"[0:v:0]trim=start={Number(kept[i].Start)}:end={Number(kept[i].End)},setpts=PTS-STARTPTS[v{i}];";
+                streams.Append($"[v{i}]");
+                if (audio) { prefix += $"[0:a:0]atrim=start={Number(kept[i].Start)}:end={Number(kept[i].End)},asetpts=PTS-STARTPTS,apad,atrim=duration={Number(kept[i].End-kept[i].Start)}[a{i}];"; streams.Append($"[a{i}]"); }
+            }
+            prefix += streams + $"concat=n={kept.Length}:v=1:a={(audio ? 1 : 0)}[joinedv]" + (audio ? "[joineda]" : "") + ";";
+            videoInput = "[joinedv]"; audioInput = "[joineda]";
+        }
         string video = $"trim=start={Number(request.Start)}:end={Number(request.End)},setpts=(PTS-STARTPTS)/{Number(request.Speed)}";
+        if (request.Deleted is { Count: > 0 }) video = $"setpts=(PTS-STARTPTS)/{Number(request.Speed)}";
         if (request.Crop is { } crop) video += $",crop={crop.Width}:{crop.Height}:{crop.X}:{crop.Y}:exact=1";
         if (request.Format == RecordingFormat.Gif)
         {
@@ -67,15 +87,14 @@ internal static class VideoExportService
             // Older fps filters can repeat the final frame up to the original
             // trim-end timestamp. Bound the retimed stream before encoding.
             video += $",fps={request.FramesPerSecond ?? request.GifFps},trim=duration={Number(request.OutputDuration)},scale={Math.Min(width, inputWidth)}:-1:flags=lanczos,split[frames][paletteinput];[paletteinput]palettegen=max_colors={colors}:reserve_transparent=0[palette];[frames][palette]paletteuse=dither=sierra2_4a[out]";
-            args.AddRange(new[] { "-filter_complex", "[0:v:0]" + video, "-map", "[out]", "-an", "-loop", "0" });
+            args.AddRange(new[] { "-filter_complex", prefix + videoInput + video, "-map", "[out]", "-an", "-loop", "0" });
         }
         else
         {
             if (request.FramesPerSecond is int fps) video += $",fps={fps}";
             video += $",trim=duration={Number(request.OutputDuration)}";
-            bool audio = info.HasAudio && !request.Mute;
-            string graph = $"[0:v:0]{video},scale=trunc(iw/2)*2:trunc(ih/2)*2[outv]";
-            if (audio) graph += $";[0:a:0]atrim=start={Number(request.Start)}:end={Number(request.End)},asetpts=PTS-STARTPTS,atempo={Number(request.Speed)}[outa]";
+            string graph = prefix + $"{videoInput}{video},scale=trunc(iw/2)*2:trunc(ih/2)*2[outv]";
+            if (audio) graph += request.Deleted is { Count: > 0 } ? $";{audioInput}atempo={Number(request.Speed)},apad,atrim=duration={Number(request.OutputDuration)}[outa]" : $";[0:a:0]atrim=start={Number(request.Start)}:end={Number(request.End)},asetpts=PTS-STARTPTS,atempo={Number(request.Speed)}[outa]";
             args.AddRange(new[] { "-filter_complex", graph, "-map", "[outv]" });
             if (audio) args.AddRange(new[] { "-map", "[outa]", "-c:a", request.Format == RecordingFormat.Mp4 ? "aac" : "libopus", "-b:a", "128k" }); else args.Add("-an");
             int crf = request.Quality == ExportQuality.High ? 18 : request.Quality == ExportQuality.Medium ? 23 : 28;

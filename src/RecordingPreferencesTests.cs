@@ -15,7 +15,7 @@ namespace QuickCapture;
 
 internal static class RecordingPreferencesTests
 {
-    internal static async Task RunAsync(Func<string, Func<Task>, Task> check)
+    internal static async Task RunAsync(Func<string, Func<Task>, Task> check, bool validateExports = true)
     {
         await check("Settings exactly match default and resized main panels and retain only the Settings title", async () =>
         {
@@ -32,11 +32,10 @@ internal static class RecordingPreferencesTests
                         Ensure(window.Title == "设置" && Named<TextBlock>(window, "SettingsTitle").Text == "设置", "Settings title still includes the application name");
                         var title = Named<TextBlock>(window, "SettingsTitle");
                         Ensure(Visuals<Border>((DependencyObject)title.Parent).All(border => border.Width != 22), "Settings title retained its application icon");
-                        var scroll = Visuals<ScrollViewer>(window).First(viewer => viewer.Content is StackPanel);
-                        scroll.ScrollToBottom(); await Task.Delay(20); window.UpdateLayout();
                         var save = Named<Button>(window, "SaveSettings"); var origin = save.TranslatePoint(new Point(), window);
                         Ensure(origin.Y + save.ActualHeight <= window.ActualHeight, "Fixed footer is clipped");
-                        Ensure(Visuals<TextBlock>(scroll).Any(text => text.Text.Contains("FFmpeg / ffprobe")), "Scrolling cannot reach the media hint");
+                        Ensure(window.CategoryTabs.Items.Count == 3 && Visuals<TextBlock>(window).Any(text => text.Text.Contains("FFmpeg / ffprobe")), "General category lost the media hint");
+                        Ensure(!Visuals<ScrollViewer>(window).Any(viewer => viewer.Content is StackPanel), "Settings retained a scrolling page");
                     }
                     finally { window.Close(); }
                 }
@@ -97,6 +96,7 @@ internal static class RecordingPreferencesTests
             finally { Paths.TestRoot = previous; }
             return Task.CompletedTask;
         });
+        if (!validateExports) return;
         await check("MP4, WebM and GIF exports produce each selectable frame rate and retain audio/copy semantics", async () =>
         {
             var tools = await MediaTools.DetectAsync(new Settings());
@@ -151,7 +151,7 @@ internal static class RecordingPreferencesTests
         dialog.Loaded += async (_, _) => { try { await Task.Delay(60); await action(); done.SetResult(); } catch (Exception ex) { done.SetException(ex); } finally { if (dialog.IsVisible) dialog.Close(); } };
         var result = dialog.ShowDialog(); await done.Task; return result;
     }
-    private static T Named<T>(DependencyObject root, string name) where T : FrameworkElement => Visuals<T>(root).First(item => item.Name == name || item is Button button && button.Content as string == name);
+    private static T Named<T>(DependencyObject root, string name) where T : FrameworkElement => root is SettingsWindow settings ? settings.Setting<T>(name) : Visuals<T>(root).First(item => item.Name == name || item is Button button && button.Content as string == name);
     private static IEnumerable<T> Visuals<T>(DependencyObject root) where T : DependencyObject
     {
         if (root is T match) yield return match;

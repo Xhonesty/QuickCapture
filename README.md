@@ -1,6 +1,14 @@
 # 轻截 · QuickCapture
 
-轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.10.0**。
+轻截是一款 Windows 截图与录屏工具：框选画面后直接标注、复制或保存，录屏结束后裁切和导出，并从最近文件继续查看成果。采用 C# / WPF 与 Windows 原生采集接口，当前版本为 **0.11.0**。
+
+## 设置分类与精简主界面
+
+设置顶部切换 **通用与媒体工具 / 截屏 / 录屏**，默认 480×680 DIP 下每页一屏可操作；支持左右方向键、Home/End、Ctrl+Tab / Ctrl+Shift+Tab。切换保留未保存输入，统一保存所有分类，取消恢复预览。声音设备检测与试录使用二级页面。主界面顶部保留主题、设置及窗口控制；图片和视频继续编辑使用最近文件菜单。马赛克已采用经确认的九格像素 SVG。详见 [设置分类与图标说明](docs/settings-categories-and-mosaic.md)。
+
+<p align="center"><img src="docs/images/settings-tabs-light-0.png" width="320" alt="通用与媒体工具" /> <img src="docs/images/settings-tabs-light-1.png" width="320" alt="截屏设置" /> <img src="docs/images/settings-tabs-dark-2.png" width="320" alt="深色录屏设置" /></p>
+
+<p align="center"><img src="docs/images/mosaic-toolbar-light-selected.png" width="780" alt="浅色九格像素马赛克图标" /><br/><img src="docs/images/mosaic-toolbar-dark-selected.png" width="780" alt="深色九格像素马赛克图标" /></p>
 
 ## 主要能力
 
@@ -11,7 +19,17 @@
 - **录屏与导出**：区域、窗口、显示器录制；暂停 / 继续，系统声音与麦克风；时间裁切、画面裁剪、变速、静音，导出 MP4 / WebM / GIF。
 - **文件与日常操作**：截图支持 PNG / JPG / WebP / BMP，复制、自动保存、置顶贴图；最近文件、保存目录、全局快捷键、托盘和浅色 / 深色主题。
 
+## 声音设备、多段剪辑与截图项目
+
+- **声音设备**：录屏卡片的“声音设备…”分别选择麦克风输入、系统声音播放设备，可跟随系统默认、刷新、检测电平、试录三秒并分别回放。设备 ID 自动保存；缺失设备保留选择并提示重新选择。真实 WASAPI 样本驱动两个电平，录制控制条也紧凑显示，持续过高有提示。设备中断或默认设备变化时停止当前录制并保留已录原片。
+- **删除中段**：编辑器展开“删除中间片段”，输入原片秒数或用预览位置标记，再删除；红色表示删除范围，青绿表示首尾保留范围。支持合并重叠/相邻片段、调整边界、恢复、撤销重做与自动跳过预览，显示原片、保留及变速后时长。与画面裁剪、速度、静音及三种导出格式组合使用。
+- **截图继续编辑**：每次保存或复制时自动保存，同时保留原图、全部标注、文字样式、编号及裁剪状态。最近文件“更多 → 继续编辑”恢复对象；“打开文件”仍使用系统默认程序。普通图片也可通过最近文件“继续编辑”作为新底图。继续编辑后的保存更新当前图片与项目，编辑器“另存为”生成独立版本。
+
+截图项目在 `Data/ScreenshotProjects`，普通导出图片仍在所选保存目录。录屏母版与新版配置一起保存在 `Data/Recordings`；使用画面裁剪或中段删除的成功导出会保留它们，最近文件“移到回收站”可明确清理原片。外部录屏的配置在 `Data/RecordingEdits`。“清理截图项目”保留导出图片；“清理剪辑配置”保留视频原片。详细格式、操作和本轮验证边界见 [声音设备与可继续编辑项目](docs/editable-media.md)。
+
 ## 本轮录屏编辑与截图属性栏
+
+录屏编辑窗口采用可伸缩预览区，导出选项与保存位置并排，一屏显示主要控件和裁剪操作。最近文件的 **更多 → 编辑录屏** 可打开已保存的 MP4 / WebM / GIF，再次调整时间、画面裁剪、倍率与导出设置。默认在原目录另存“原文件名-编辑”副本，保留原文件；WebM / GIF 使用临时兼容预览，关闭时清理。详见 [一屏录屏编辑与再次编辑](docs/recording-reedit.md)。
 
 录屏编辑窗口完整跟随应用的浅色 / 深色主题，已经打开的窗口也会即时更新。次要按钮采用有边框的灰绿色实色背景，确认裁剪与导出使用青绿主色，普通、悬停、按下、选中、键盘焦点与禁用有明确区别。标题栏左侧留空，内容区标题保留，右侧仍可最小化、最大化 / 还原与关闭；原生标题栏和边缘命中区域保留拖动及调整尺寸。
 
@@ -41,11 +59,11 @@
 
 ## 界面预览
 
-<p align="center"><img src="docs/images/main-window.png" width="480" alt="轻截主界面：截图、录屏、最近文件三个卡片及底部状态" /></p>
+<p align="center"><img src="docs/images/main-simplified-light.png" width="480" alt="轻截主界面：截图、录屏、最近文件三个卡片及底部状态" /></p>
 
 截图、录屏、最近文件采用统一的实色卡片和青绿主色。文件行悬停或键盘聚焦后显示更多操作与打开目录，可将文件移到回收站；更多记录仅在列表内部滚动。主面板默认 480×680 DIP，设置窗口打开时与主窗口的当前宽高完全一致，左上角仅显示“设置”。详见 [界面优化说明](docs/panel-optimization.md)。
 
-<p align="center"><img src="docs/images/settings-light.png" width="360" alt="浅色设置窗口：简洁标题和按录制格式选择帧率" /> <img src="docs/images/settings-dark.png" width="360" alt="深色设置窗口：与主面板相同尺寸，保存和取消固定在底部" /></p>
+<p align="center"><img src="docs/images/settings-tabs-light-0.png" width="360" alt="浅色设置窗口：简洁标题和按录制格式选择帧率" /> <img src="docs/images/settings-tabs-dark-2.png" width="360" alt="深色设置窗口：与主面板相同尺寸，保存和取消固定在底部" /></p>
 
 MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显示对应选项，并即时预览主面板；保存后保留，取消或关闭会恢复。主面板修改帧率也会保存到对应格式。详见 [帧率同步与兼容说明](docs/recording-preferences.md)。
 
@@ -64,7 +82,7 @@ MP4、WebM、GIF 分别记住自己的帧率。设置中切换录制格式会显
 
 ## 获取与运行
 
-下载 [v0.10.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.10.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.10.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
+下载 [v0.11.0 Windows x64 便携包](https://github.com/Xhonesty/QuickCapture/releases/download/v0.11.0/QuickCapture-win-x64.zip)，或查看 [Release 更新说明与 SHA-256 校验文件](https://github.com/Xhonesty/QuickCapture/releases/tag/v0.11.0)。源码仓库：[Xhonesty/QuickCapture](https://github.com/Xhonesty/QuickCapture)，默认分支为 `main`。
 
 使用便携包时，解压整个文件夹并运行 `QuickCapture/QuickCapture.exe`。自带 .NET 运行时和 FFmpeg / ffprobe，无需安装 SDK；不能只复制 EXE。程序目录需要可写。
 
@@ -107,7 +125,7 @@ python tools/setup-ocr.py
 - 控制条支持暂停 / 继续，视频和声音同步暂停，暂停期间不增加有效时长；暂停后也可以停止。控制条自动靠近录制目标并避让边缘，也可拖动计时区手动放置。
 - 录屏速度支持 0.5× / 1× / 1.5× / 2×；导出编辑器按格式提供帧率与质量，临时调整不改变录制默认值。GIF 没有音轨。取消导出保留原片，“待导出”项目可以继续；退出先完成录制，下次再导出。
 - 视频“画面裁剪”支持八个手柄、框内移动、自由 / 原始 / 16:9 / 9:16 / 1:1 比例。确认后预览与导出使用同一原始像素范围；裁剪导出成功后仍保留完整母版和已确认配置，可再次调整。
-- 主面板主题按钮立即切换并保存；设置中的界面风格即时预览并同步主面板，保存后持久化，取消或关闭设置时恢复原主题。设置页与主窗口当前尺寸一致，保留四组；内容可内部滚动，保存和取消固定在底部。
+- 主面板主题按钮立即切换并保存；设置中的界面风格即时预览并同步主面板，保存后持久化，取消或关闭设置时恢复原主题。设置页与主窗口当前尺寸一致，顶部切换“通用与媒体工具 / 截屏 / 录屏”；默认尺寸下内容完整可见，无需滚动，保存和取消固定在底部。
 - 快捷键录入需至少一个修饰键与一个普通按键，支持字母、数字与功能键。Esc 撤销当前录入，Tab / Shift+Tab 切换输入框；保存时检查重复 / 占用，失败保留原来成功注册的组合。
 
 </details>
@@ -120,7 +138,10 @@ python tools/setup-ocr.py
 - `Data/settings.json`：设置和上次录屏区域，原子替换保存。
 - `Data/errors.log`：应用错误。
 - `Data/recorder.log`：最近一次录制日志，每次录制重置。
-- `Data/Recordings`：录屏母版与恢复元数据；取消 / 失败保留。裁剪导出成功后保留完整母版和已确认裁剪配置，可再次调整；未裁剪的成功导出沿用自动清理。
+- `Data/Recordings`：录屏母版与恢复元数据；取消 / 失败保留。画面裁剪或中段删除导出成功后保留完整母版及剪辑配置，可继续编辑；其他成功导出沿用自动清理。
+- `Data/ScreenshotProjects`：带版本号的截图原图、标注和裁剪项目，以及本地导出路径关联。
+- `Data/RecordingEdits`：外部视频的编辑配置；不会修改外部原片。
+- `Data/AudioTest`：最近一次三秒试录，声音设备窗口可清理。
 - `Tools/media`：固定版本 FFmpeg / ffprobe 捆绑备用；检测时优先指定目录与系统 PATH。
 - `*.partial.mp4`：正在写入或未成功完成的视频。正常停止并完成编码后转为正式 `.mp4`，未完成文件不会出现在最近列表。异常断电或强制结束可能损坏未完成视频。
 
@@ -136,8 +157,12 @@ python tools/setup-ocr.py
 - H.264 输出使用偶数尺寸；奇数宽高会调整至邻近的较小偶数尺寸。
 - 区域录屏使用 Desktop Duplication 裁剪，避免 Windows.Graphics.Capture 围住整块显示器的系统边框。窗口及整屏录制仍可能显示对应目标的系统捕获边框。
 - 区域录制边框绘制在选区外；边框和计时条还通过 Windows 排除捕获接口避免入镜，Windows 10 2004 及以上支持该排除行为。
-- 麦克风使用 Windows 默认输入设备；需在 Windows 隐私设置中允许桌面应用访问麦克风。音频设备变更或断开后请停止并重新开始录制。
-- 当前未提供滚动截图、OCR 翻译 / 表格 / 公式、多段拼接、提取音频、MKV / MOV、云端分享和开机自启。
+- 麦克风需在 Windows 隐私设置中允许桌面应用访问；支持默认或指定输入/播放设备。设备变更或断开后停止录制并提示重新选择。
+- 当前未提供滚动截图、OCR 翻译 / 表格 / 公式、合并不同视频文件、提取音频、MKV / MOV、云端分享和开机自启。
+
+## v0.11.0 定向验收
+
+设置与主界面 13 项、马赛克与保留编辑入口 3 项通过；较早的声音设备、多段剪辑与截图项目另有 26 项阶段验收记录。检查按影响范围执行，修复后复测失败项并沿用未受影响的通过结果。详见 [本版更新说明](docs/releases/v0.11.0.md) 和 [验收记录](docs/verification.md)。
 
 ## 开发与构建
 

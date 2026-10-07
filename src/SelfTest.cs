@@ -43,6 +43,36 @@ internal static class SelfTest
         }
         Directory.CreateDirectory(UiChangeTests.PreviewDirectory);
         ThemeService.Apply(ThemeService.Current);
+        if (Array.IndexOf(args, "--mosaic-preview") >= 0) { MosaicCandidatePreview.Render(); return 0; }
+        if (Array.IndexOf(args, "--mosaic-refined-preview") >= 0) { MosaicCandidatePreview.Render(refined: true); return 0; }
+        if (Array.IndexOf(args, "--mosaic-icon-only") >= 0)
+        {
+            await MosaicIconTests.RunAsync(Check);
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            return failures == 0 ? 0 : 1;
+        }
+        if (Array.IndexOf(args, "--settings-tabs-only") >= 0)
+        {
+            await SettingsCategoryTests.RunAsync(Check);
+            await RecordingPreferencesTests.RunAsync(Check, validateExports: false);
+            await PanelOptimizationTests.RunAsync(Check);
+            await RecentFilesTests.RunAsync(Check);
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            return failures == 0 ? 0 : 1;
+        }
+        if (Array.IndexOf(args, "--screenshot-projects-only") >= 0 || Array.IndexOf(args, "--screenshot-restart-only") >= 0) { await ScreenshotProjectTests.RunAsync(Check, Array.IndexOf(args, "--screenshot-restart-only") >= 0); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--video-cuts-only") >= 0) { await VideoCutTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--audio-devices-only") >= 0) { await AudioDeviceTests.RunAsync(Check); return failures == 0 ? 0 : 1; }
+        if (Array.IndexOf(args, "--recording-edit-only") >= 0)
+        {
+            await RecordingReeditTests.RunAsync(Check);
+            await RecentFilesTests.RunAsync(Check);
+            System.Windows.Input.Mouse.Capture(null);
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            return failures == 0 ? 0 : 1;
+        }
         if (Array.IndexOf(args, "--context-toolbar-only") >= 0)
         {
             await ToolbarPreviewTests.RunAsync(Check);

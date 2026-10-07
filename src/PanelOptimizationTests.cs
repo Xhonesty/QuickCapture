@@ -120,7 +120,7 @@ internal static class PanelOptimizationTests
         var result = dialog.ShowDialog(); await done.Task; return result;
     }
     private static T Named<T>(DependencyObject root, string name) where T : FrameworkElement
-        => Visuals<T>(root).FirstOrDefault(item => item.Name == name || item is Button button && button.Content as string == name) ?? throw new InvalidOperationException("Missing control: " + name);
+        => root is SettingsWindow settings ? settings.Setting<T>(name) : Visuals<T>(root).FirstOrDefault(item => item.Name == name || item is Button button && button.Content as string == name) ?? throw new InvalidOperationException("Missing control: " + name);
     private static IEnumerable<T> Visuals<T>(DependencyObject parent) where T : DependencyObject
     {
         if (parent is T match) yield return match;

@@ -82,6 +82,8 @@ internal sealed class AnnotationSurface : FrameworkElement
     private readonly Stack<Edit> _undo = new(), _redo = new();
     private int _selected = -1;
     internal IReadOnlyList<Annotation> Items => _items;
+    internal void Restore(IEnumerable<Annotation> items)
+    { _items.Clear(); _items.AddRange(items); _undo.Clear(); _redo.Clear(); _selected = -1; Notify(); }
     internal Annotation? Selected => _selected >= 0 && _selected < _items.Count ? _items[_selected] : null;
     public Int32Rect CropBounds { get; private set; }
     public int SourceWidth => _image.PixelWidth;

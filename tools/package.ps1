@@ -1,4 +1,4 @@
-param([string]$SourceDirectory)
+param([string]$SourceDirectory, [string]$OutputFile)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $dist = if ($SourceDirectory) { [IO.Path]::GetFullPath($SourceDirectory, $projectRoot) } else { Join-Path $projectRoot 'dist' }
@@ -14,7 +14,10 @@ foreach ($entry in Get-ChildItem -LiteralPath $dist) {
         Copy-Item -LiteralPath $entry.FullName -Destination $stage -Recurse -Force
     }
 }
-$archive = Join-Path $projectRoot 'artifacts\QuickCapture-win-x64.zip'
+$archive = if ($OutputFile) { [IO.Path]::GetFullPath($OutputFile, $projectRoot) } else { Join-Path $projectRoot 'artifacts\QuickCapture-win-x64.zip' }
+$artifactRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+if (-not $archive.StartsWith($artifactRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetExtension($archive) -ne '.zip') { throw 'Package output must be a ZIP inside QuickCapture/artifacts.' }
+New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($archive)) -Force | Out-Null
 if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive }
 [System.IO.Compression.ZipFile]::CreateFromDirectory($stagingRoot, $archive, [System.IO.Compression.CompressionLevel]::Optimal, $false)
 $resolvedStage = (Resolve-Path -LiteralPath $stagingRoot).Path

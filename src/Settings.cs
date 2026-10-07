@@ -30,6 +30,8 @@ internal sealed class Settings
     public string RecordingHotkey { get; set; } = "Ctrl+Alt+F9";
     public bool SystemAudio { get; set; } = false;
     public bool Microphone { get; set; } = false;
+    public string MicrophoneDeviceId { get; set; } = "";
+    public string SystemAudioDeviceId { get; set; } = "";
     public bool Cursor { get; set; } = true;
     public bool AutoSaveScreenshot { get; set; } = true;
     public bool SnapToWindow { get; set; } = true;

@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace QuickCapture;
 
-internal sealed record RecordingMetadata(ExportQuality Quality, int Fps, bool HasAudio, double Duration, VideoCrop? Crop = null);
+internal sealed record RecordingMetadata(ExportQuality Quality, int Fps, bool HasAudio, double Duration, VideoCrop? Crop = null, RecordingEditState? Edit = null, int Version = 2);
 internal static class RecordingRecovery
 {
     internal static string DirectoryPath => Path.Combine(Paths.Data, "Recordings");
@@ -12,7 +12,7 @@ internal static class RecordingRecovery
     { Directory.CreateDirectory(DirectoryPath); return Path.Combine(DirectoryPath, $"master-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.mp4"); }
     internal static bool Owns(string path) => Path.GetDirectoryName(Path.GetFullPath(path))!.Equals(Path.GetFullPath(DirectoryPath), StringComparison.OrdinalIgnoreCase) && Path.GetFileName(path).StartsWith("master-", StringComparison.Ordinal) && Path.GetExtension(path).Equals(".mp4", StringComparison.OrdinalIgnoreCase);
     internal static void Remember(string path, RecordingMetadata metadata)
-    { if (!Owns(path)) throw new ArgumentException("不是本程序的录屏母版。"); File.WriteAllText(path + ".json", JsonSerializer.Serialize(metadata)); }
+    { if (!Owns(path)) throw new ArgumentException("不是本程序的录屏母版。"); ImageExportService.AtomicWrite(path + ".json", JsonSerializer.SerializeToUtf8Bytes(metadata), true); }
     internal static RecordingMetadata Load(string path)
     {
         try { return JsonSerializer.Deserialize<RecordingMetadata>(File.ReadAllText(path + ".json")) ?? new(ExportQuality.Medium, 30, true, 0); }
@@ -22,6 +22,6 @@ internal static class RecordingRecovery
     {
         // Only remove our owned intermediate files, never imported recordings or exports.
         if (!Owns(path)) return;
-        File.Delete(path); File.Delete(path + ".json");
+        File.Delete(path); File.Delete(path + ".json"); RecordingEditStore.Remove(path);
     }
 }

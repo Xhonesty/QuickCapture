@@ -42,7 +42,11 @@ internal static class ImageExportService
             using var bitmap = SKBitmap.Decode(bytes) ?? throw new InvalidDataException("无法读取 WebP。");
             using var image = SKImage.FromBitmap(bitmap); using var png = image.Encode(SKEncodedImageFormat.Png, 100); bytes = png.ToArray();
         }
-        using var stream = new MemoryStream(bytes); var result = BitmapFrame.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); result.Freeze(); return result;
+        using var stream = new MemoryStream(bytes); var result = BitmapFrame.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        // Detach decoder metadata as well as pixels before crossing worker threads.
+        var converted = new FormatConvertedBitmap(result, PixelFormats.Bgra32, null, 0);
+        int stride = checked(result.PixelWidth * 4); var pixels = new byte[checked(stride * result.PixelHeight)]; converted.CopyPixels(pixels, stride, 0);
+        var detached = BitmapSource.Create(result.PixelWidth, result.PixelHeight, 96, 96, PixelFormats.Bgra32, null, pixels, stride); detached.Freeze(); return detached;
     }
     internal static string CorrectExtension(string path, ScreenshotFormat format) => Path.ChangeExtension(path, Extension(format));
     internal static void Save(BitmapSource source, string path, ScreenshotFormat format, int quality, bool overwrite = false)

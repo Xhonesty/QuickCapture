@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
@@ -9,9 +10,13 @@ namespace QuickCapture;
 
 internal sealed class ScreenshotSaveWindow : Window
 {
+    private bool _saving;
+    internal ScreenshotFormat SavedFormat { get; private set; }
+    internal int SavedQuality { get; private set; }
     internal string? SavedPath { get; private set; }
-    internal ScreenshotSaveWindow(Window owner, BitmapSource image, Settings settings)
+    internal ScreenshotSaveWindow(Window owner, BitmapSource image, Settings settings, Func<string, ScreenshotFormat, int, bool, Task>? saveProject = null)
     {
+        Closing += (_, e) => e.Cancel = _saving;
         Ui.Theme(this); Owner = owner; Title = "轻截 · 保存截图"; Width = 560; Height = 540; MaxHeight = SystemParameters.WorkArea.Height - 40; ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var shell = new DockPanel(); Content = shell;
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(24, 8, 24, 16) }; DockPanel.SetDock(buttons, Dock.Bottom); shell.Children.Add(buttons);
@@ -32,7 +37,7 @@ internal sealed class ScreenshotSaveWindow : Window
         }
         format.SelectionChanged += (_, _) => Update(); quality.ValueChanged += (_, _) => Update(); Update();
         root.Children.Add(UiDesign.Text("本次格式与质量仅用于这次保存，不修改默认设置。", true));
-        buttons.Children.Add(Ui.Button("取消", () => DialogResult = false)); buttons.Children.Add(Ui.Button("保存", () =>
+        buttons.Children.Add(Ui.Button("取消", () => DialogResult = false)); buttons.Children.Add(Ui.Button("保存", async () =>
         {
             try
             {
@@ -41,9 +46,13 @@ internal sealed class ScreenshotSaveWindow : Window
                 string path = ImageExportService.CorrectExtension(Path.Combine(Path.GetFullPath(folder.Text.Trim()), name), (ScreenshotFormat)format.SelectedIndex);
                 bool overwrite = File.Exists(path);
                 if (overwrite && MessageBox.Show(this, "目标文件已存在，是否替换？", "轻截", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-                ImageExportService.Save(image, path, (ScreenshotFormat)format.SelectedIndex, (int)quality.Value, overwrite); SavedPath = path; DialogResult = true;
+                _saving = true; root.IsEnabled = buttons.IsEnabled = false;
+                if (saveProject != null) await saveProject(path, (ScreenshotFormat)format.SelectedIndex, (int)quality.Value, overwrite);
+                else await ScreenshotProjects.SaveAsync(new(image,Array.Empty<Annotation>(),new(0,0,image.PixelWidth,image.PixelHeight)), image, path, (ScreenshotFormat)format.SelectedIndex, (int)quality.Value, overwrite);
+                SavedPath = path; SavedFormat = (ScreenshotFormat)format.SelectedIndex; SavedQuality = (int)quality.Value; _saving = false; DialogResult = true;
             }
             catch (Exception ex) { Ui.Error(this, ex); }
+            finally { _saving = false; root.IsEnabled = buttons.IsEnabled = true; }
         }));
     }
 }

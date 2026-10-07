@@ -19,7 +19,7 @@ internal static class ToolCatalog
         new("arrow", "箭头", "move-up-right", Key.A, () => editor.SelectTool(AnnotationTool.Arrow), Tool: AnnotationTool.Arrow, Options: editor.CreateArrowOptions),
         new("text", "文字", "type", Key.T, editor.ShowTextOptions, Tool: AnnotationTool.Text, Options: editor.CreateTextOptions),
         new("step", "步骤编号", "list-ordered", Key.D, editor.ShowStepOptions, Tool: AnnotationTool.Step, Options: editor.CreateStepOptions),
-        new("mosaic", "马赛克", "grid-2x2", Key.M, () => editor.SelectTool(AnnotationTool.Mosaic), Tool: AnnotationTool.Mosaic, Options: editor.CreateMosaicOptions),
+        new("mosaic", "马赛克", "mosaic-pixels", Key.M, () => editor.SelectTool(AnnotationTool.Mosaic), Tool: AnnotationTool.Mosaic, Options: editor.CreateMosaicOptions),
         new("color", "标注颜色", "palette", Key.K, editor.ShowColors, "draw"),
         new("undo", "撤销", "undo-2", Key.Z, editor.Undo, "history", CanExecute: () => editor.Surface.CanUndo, AlternativeKeys: "Ctrl+Z"),
         new("redo", "重做", "redo-2", Key.Y, editor.Redo, "history", CanExecute: () => editor.Surface.CanRedo, AlternativeKeys: "Ctrl+Y"),

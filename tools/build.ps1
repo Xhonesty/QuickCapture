@@ -54,7 +54,7 @@ New-Item -ItemType Directory -Path $licenseDestination -Force | Out-Null
 foreach ($licenseFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs\licenses') -File) { Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Force }
 $upgradeDocs = Join-Path $publishOutput 'docs'
 New-Item -ItemType Directory -Path $upgradeDocs -Force | Out-Null
-foreach ($document in @('recording-editor-and-context-toolbar.md', 'toolbar-and-previews.md', 'office-tools.md', 'ocr-options.md', 'roadmap.md', 'feature-upgrade.md', 'in-place-text.md', 'panel-optimization.md', 'recording-preferences.md', 'design-spec.md', 'media-tools.md', 'verification.md', 'icon-processing.md')) {
+foreach ($document in @('settings-categories-and-mosaic.md', 'editable-media.md', 'recording-reedit.md', 'recording-editor-and-context-toolbar.md', 'toolbar-and-previews.md', 'office-tools.md', 'ocr-options.md', 'roadmap.md', 'feature-upgrade.md', 'in-place-text.md', 'panel-optimization.md', 'recording-preferences.md', 'design-spec.md', 'media-tools.md', 'verification.md', 'icon-processing.md')) {
     $documentationSource = Join-Path $projectRoot "docs\$document"
     if (Test-Path -LiteralPath $documentationSource) { Copy-Item -LiteralPath $documentationSource -Destination $upgradeDocs -Force }
 }

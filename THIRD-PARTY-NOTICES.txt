@@ -65,3 +65,8 @@ Apache License 2.0. Pinned source, exact sizes and SHA-256 are recorded in
 Tools/ocr/manifest.json (source tree: vendor/ocr/manifest.json).
 Full license: licenses/Tesseract-models.txt.
 Models are downloaded with tools/setup-ocr.py; no recognition data is uploaded.
+
+NAudio.Core / NAudio.Wasapi 2.2.1
+https://github.com/naudio/NAudio
+MIT License; full text in licenses/NAudio.txt.
+Copyright 2020 Mark Heath

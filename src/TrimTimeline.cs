@@ -15,8 +15,14 @@ internal sealed class TrimTimeline : Canvas
     private readonly Thumb _left = new(), _right = new();
     private readonly Rectangle _playhead = new() { Width = 2, IsHitTestVisible = false };
     private double _duration, _start, _end, _position, _fps = 30;
+    private VideoRange[] _deleted = Array.Empty<VideoRange>();
+    private readonly System.Collections.Generic.List<Border> _cuts = new();
+    internal event Action? EditStarted;
+    internal event Action? EditCompleted;
+    internal void SetDeleted(VideoRange[] deleted) { _deleted = deleted; ArrangeTrack(); }
     public event Action? RangeChanged;
     public event Action<double>? SeekRequested;
+    public event Action<double>? RangePreviewRequested;
     internal double Start => _start;
     internal double End => _end;
     internal double Duration => _duration;
@@ -44,19 +50,27 @@ internal sealed class TrimTimeline : Canvas
         thumb.GotKeyboardFocus += (_, _) => thumb.Opacity = .75;
         thumb.LostKeyboardFocus += (_, _) => thumb.Opacity = IsEnabled ? 1 : .55;
         double anchor = 0, value = 0;
-        thumb.DragStarted += (_, _) => { anchor = Mouse.GetPosition(this).X; value = start ? _start : _end; };
-        thumb.DragDelta += (_, _) => { double time = value + (Mouse.GetPosition(this).X - anchor) / Span * _duration; if (start) SetRange(time, _end); else SetRange(_start, time); };
+        thumb.DragStarted += (_, _) => { EditStarted?.Invoke(); anchor = Mouse.GetPosition(this).X; value = start ? _start : _end; RangePreviewRequested?.Invoke(value); };
+        thumb.DragCompleted += (_, _) => EditCompleted?.Invoke();
+        thumb.DragDelta += (_, _) =>
+        {
+            double time = value + (Mouse.GetPosition(this).X - anchor) / Span * _duration;
+            if (start) SetRange(time, _end); else SetRange(_start, time);
+            RangePreviewRequested?.Invoke(start ? _start : _end);
+        };
         thumb.PreviewKeyDown += (_, e) =>
         {
             if (e.Key is not (Key.Left or Key.Right)) return;
             double delta = (e.Key == Key.Left ? -1 : 1) * (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1) / _fps;
-            if (start) SetRange(_start + delta, _end); else SetRange(_start, _end + delta); e.Handled = true;
+            if (start) SetRange(_start + delta, _end); else SetRange(_start, _end + delta);
+            RangePreviewRequested?.Invoke(start ? _start : _end); e.Handled = true;
         };
     }
     internal void Initialize(double duration, double fps)
     { _duration = Math.Max(0, duration); _fps = fps > 0 ? fps : 30; _start = 0; _end = _duration; ArrangeTrack(); RangeChanged?.Invoke(); }
     internal void SetRange(double start, double end)
     {
+        start = VideoCuts.Snap(start, _fps, _duration); end = VideoCuts.Snap(end, _fps, _duration);
         double minimum = Math.Min(_duration, 1 / _fps);
         _end = Math.Clamp(end, minimum, _duration); _start = Math.Clamp(start, 0, Math.Max(0, _end - minimum));
         ArrangeTrack(); RangeChanged?.Invoke();
@@ -67,6 +81,12 @@ internal sealed class TrimTimeline : Canvas
         double X(double seconds) => 8 + (_duration > 0 ? seconds / _duration * Span : 0);
         _track.Width = Span; _track.Height = 12; SetLeft(_track, 8); SetTop(_track, 18);
         _range.Width = Math.Max(0, X(_end) - X(_start)); _range.Height = 12; SetLeft(_range, X(_start)); SetTop(_range, 18);
+        foreach (var cut in _cuts) Children.Remove(cut); _cuts.Clear();
+        foreach (var interval in _deleted)
+        {
+            var cut = new Border { Width = Math.Max(1, X(interval.End) - X(interval.Start)), Height = 12, Opacity = .75, IsHitTestVisible = false, CornerRadius = new CornerRadius(2) };
+            cut.SetResourceReference(Border.BackgroundProperty, "Danger"); SetLeft(cut, X(interval.Start)); SetTop(cut, 18); Children.Insert(2, cut); _cuts.Add(cut);
+        }
         SetLeft(_left, X(_start) - 8); SetTop(_left, 6); SetLeft(_right, X(_end) - 8); SetTop(_right, 6);
         _playhead.Height = 42; SetLeft(_playhead, X(_position) - 1); SetTop(_playhead, 3);
     }

@@ -26,7 +26,7 @@ public partial class MainWindow : Window
     private Icon? _icon;
     private RecordingBar? _bar;
     private RecordingFrame? _frame;
-    private bool _busy, _exit, _stopBusy;
+    private bool _busy, _exit, _stopBusy, _closed;
     private EditorWindow? _editor;
     private RecordingMetadata? _recordingMetadata;
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -60,7 +60,14 @@ public partial class MainWindow : Window
             SetStatus(error); Show(); Activate();
         });
         Closing += OnClosing;
-        Closed += (_, _) => { PinManager.CloseAll(); ThemeService.Changed -= OnThemeChanged; _statusTimer.Stop(); _hotkeys?.Dispose(); _tray?.Dispose(); _icon?.Dispose(); _recorder.Dispose(); };
+        _recorder.Audio.Faulted += message => Dispatcher.BeginInvoke(async () =>
+        {
+            SetStatus(message);
+            while (_recorder.State == RecordingState.Starting) await Task.Delay(100);
+            if (_recorder.State is RecordingState.Recording or RecordingState.Paused) await StopAsync();
+            SetStatus(message + "；录制已停止，已录原片保留。请重新选择设备。");
+        });
+        Closed += (_, _) => { _closed = true; PinManager.CloseAll(); ThemeService.Changed -= OnThemeChanged; _statusTimer.Stop(); _hotkeys?.Dispose(); _tray?.Dispose(); _icon?.Dispose(); _recorder.Dispose(); };
     }
     private void ConfigureHotkeys()
     {
@@ -150,7 +157,7 @@ public partial class MainWindow : Window
         _tray.ContextMenuStrip = menu; _tray.DoubleClick += (_, _) => ShowMain();
         _tray.BalloonTipClicked += (_, _) => ShowMain();
     }
-    private void ShowMain() { Show(); WindowState = WindowState.Normal; Activate(); }
+    private void ShowMain() { if (_closed || _exit || Application.Current?.Dispatcher.HasShutdownStarted == true) return; Show(); WindowState = WindowState.Normal; Activate(); }
     private void SetStatus(string message) => StatusText.Text = message;
     private void Saved(string path)
     {
@@ -229,7 +236,7 @@ public partial class MainWindow : Window
                 return null;
             }
             _bar = new RecordingBar(_settings.RecordingHotkey, async () => await StopAsync(), TogglePause,
-                () => _recorder.Elapsed, CaptureTargetBounds, source is DisplayRecordingSource); _bar.Show();
+                () => _recorder.Elapsed, CaptureTargetBounds, source is DisplayRecordingSource, _recorder.Audio); _bar.Show();
             if (recordingRegion != null) { _frame = new RecordingFrame(recordingRegion); _frame.Show(); }
             UpdateRecordingUi();
             _recordingMetadata = new(_settings.RecordingQuality, _settings.GetRecordingFps(_settings.RecordingFormat), _settings.SystemAudio || _settings.Microphone, 0);
@@ -270,20 +277,24 @@ public partial class MainWindow : Window
         _busy = true;
         try
         {
-            ShowMain(); var dialog = new RecordingEditWindow(this, path, _settings, RecordingRecovery.Load(path));
+            if (!File.Exists(path)) throw new FileNotFoundException("录屏文件不存在。", path);
+            bool owned = RecordingRecovery.Owns(path);
+            var metadata = owned ? RecordingRecovery.Load(path) : new RecordingMetadata((ExportQuality)_settings.RecordingQuality, _settings.GetRecordingFps(RecordingFormat.Mp4), true, 0);
+            ShowMain(); var dialog = new RecordingEditWindow(this, path, _settings, metadata);
             if (dialog.ShowDialog() == true)
             {
                 Saved(dialog.SavedPath!);
                 // Spatial crop is reversible while the full recording remains available.
                 // Keep cropped masters in the existing recent-file recovery workflow.
-                if (dialog.AppliedCrop == null)
+                if (owned && !dialog.PreserveMaster)
                     try { RecordingRecovery.Remove(path); } catch (IOException ex) { ErrorLog.Write(ex); }
                 RefreshRecent();
-                if (dialog.AppliedCrop != null) SetStatus("已导出；原片保留在最近文件，可再次调整裁剪。");
+                if (!owned) SetStatus("已保存编辑副本，原录屏保留；可从最近文件继续编辑。");
+                else if (dialog.PreserveMaster) SetStatus("已导出；原片和剪辑配置保留，可继续编辑；更多菜单可清理原片。");
             }
-            else { RefreshRecent(); SetStatus("原始录屏已保留，双击最近文件中的「待导出」项目继续编辑。"); }
+            else { RefreshRecent(path); SetStatus(owned ? "原始录屏已保留，双击最近文件中的「待导出」项目继续编辑。" : "已结束编辑，原录屏未改动。"); }
         }
-        finally { _busy = false; }
+        finally { _busy = false; UpdateRecordingUi(); }
     }
     private void UpdateRecordingUi()
     {
@@ -298,6 +309,7 @@ public partial class MainWindow : Window
         RecordMode.IsEnabled = !_recorder.IsBusy;
         SystemAudioBox.IsEnabled = MicrophoneBox.IsEnabled = FpsBox.IsEnabled = CursorBox.IsEnabled = !_recorder.IsBusy;
         SnapRecordWindowBox.IsEnabled = !_recorder.IsBusy;
+        AudioDevicesButton.IsEnabled = !_recorder.IsBusy && !_busy;
     }
     private void UpdateRecordingStatus()
     {
@@ -315,6 +327,7 @@ public partial class MainWindow : Window
             var extensions = new[] { ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".mp4", ".webm", ".gif" };
             var items = new DirectoryInfo(_settings.OutputDirectory).EnumerateFiles()
                 .Concat(new DirectoryInfo(RecordingRecovery.DirectoryPath).EnumerateFiles("master-*.mp4"))
+                .Concat(ScreenshotProjects.AssociatedImages().Select(path => new FileInfo(path)))
                 .Concat(RecentList.Items.OfType<RecentItem>().Select(item => new FileInfo(item.Path)))
                 .Concat(generatedPath != null ? new[] { new FileInfo(generatedPath) } : Array.Empty<FileInfo>())
                 .Where(f => f.Exists && extensions.Contains(f.Extension.ToLowerInvariant()) && !f.Name.Contains(".partial.", StringComparison.OrdinalIgnoreCase))
@@ -359,6 +372,28 @@ public partial class MainWindow : Window
     private async void Recording_Click(object sender, RoutedEventArgs e) => await ToggleRecordingAsync();
     private async void Repeat_Click(object sender, RoutedEventArgs e) => await ToggleRecordingAsync(true);
     private void Folder_Click(object sender, RoutedEventArgs e) => OpenFolder();
+    private async Task EditScreenshotAsync(string path)
+    {
+        if (_busy || _recorder.IsBusy) return;
+        if (_editor != null) { _editor.Activate(); return; }
+        _busy = true; UpdateRecordingUi();
+        try
+        {
+            var project = await ScreenshotProjects.LoadAsync(path);
+            _editor = new EditorWindow(project.Original, _settings, Saved, project);
+            _editor.Closed += (_, _) => { _editor = null; ShowMain(); }; _editor.Show();
+        }
+        catch (Exception ex) { Ui.Error(this, new InvalidDataException("无法继续编辑截图：" + ex.Message + " 现有图片与项目已保留。", ex)); }
+        finally { _busy = false; UpdateRecordingUi(); }
+    }
+    private void AudioDevices_Click(object sender, RoutedEventArgs e)
+    { if (_busy || _recorder.IsBusy) return; SaveControls(); new AudioDeviceWindow(this, _settings).ShowDialog(); }
+    private void EditSavedRecording(string path)
+    {
+        if (_busy || _recorder.IsBusy) { SetStatus("请先完成当前操作。"); return; }
+        try { EditRecording(path); }
+        catch (Exception ex) { Ui.Error(this, ex); }
+    }
     private void ThemeToggle_Click(object sender, RoutedEventArgs e)
     {
         string previous = _settings.Theme;
@@ -402,8 +437,37 @@ public partial class MainWindow : Window
         menu.SetResourceReference(ContextMenu.ForegroundProperty, "TextSecondary");
         menu.SetResourceReference(ContextMenu.BorderBrushProperty, "BorderBrush");
         var open = new MenuItem { Header = "打开文件" };
+        var edit = new MenuItem { Header = "编辑录屏", Visibility = Visibility.Collapsed };
+        var editImage = new MenuItem { Header = "继续编辑", Visibility = Visibility.Collapsed };
+        var clean = new MenuItem { Header = "清理截图项目（保留图片）", Visibility = Visibility.Collapsed };
+        var cleanVideo = new MenuItem { Header = "清理剪辑配置（保留原片）", Visibility = Visibility.Collapsed };
         var folder = new MenuItem { Header = "打开所在目录" };
         open.Click += (_, _) => { if (row.DataContext is RecentItem item) OpenRecent(item); };
+        edit.Click += (_, _) => { if (row.DataContext is RecentItem { IsVideo: true } item) EditSavedRecording(item.Path); };
+        editImage.Click += async (_, _) => { if (row.DataContext is RecentItem { IsVideo: false } item) await EditScreenshotAsync(item.Path); };
+        clean.Click += (_, _) =>
+        {
+            if (row.DataContext is not RecentItem item || _busy || _recorder.IsBusy || _editor != null) return;
+            if (MessageBox.Show(this, "清理关联的原图与标注项目后，将只能把导出图片作为普通底图编辑。导出图片保留。是否清理？", "清理截图项目", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            try { ScreenshotProjects.Clean(item.Path); RefreshRecent(); SetStatus("已清理截图项目，导出图片保留。"); } catch (Exception ex) { Ui.Error(this, ex); }
+        };
+        cleanVideo.Click += (_, _) =>
+        {
+            if (row.DataContext is not RecentItem item || _busy || _recorder.IsBusy) return;
+            if (MessageBox.Show(this, "清理此原片的时间、删除片段和导出设置？原片保留。", "清理剪辑配置", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            try { RecordingEditStore.Remove(item.Path); SetStatus("剪辑配置已清理，原片保留。"); } catch (Exception ex) { Ui.Error(this, ex); }
+        };
+        menu.Opened += (_, _) =>
+        {
+            edit.Visibility = row.DataContext is RecentItem { IsVideo: true } ? Visibility.Visible : Visibility.Collapsed;
+            edit.IsEnabled = !_busy && !_recorder.IsBusy && row.DataContext is RecentItem current && File.Exists(current.Path);
+            editImage.Visibility = row.DataContext is RecentItem { IsVideo: false } ? Visibility.Visible : Visibility.Collapsed;
+            editImage.IsEnabled = !_busy && !_recorder.IsBusy;
+            clean.Visibility = row.DataContext is RecentItem { IsVideo: false } picture && ScreenshotProjects.HasProject(picture.Path) ? Visibility.Visible : Visibility.Collapsed;
+            cleanVideo.Visibility = row.DataContext is RecentItem { IsVideo: true } video && File.Exists(RecordingEditStore.FileFor(video.Path)) ? Visibility.Visible : Visibility.Collapsed;
+            clean.IsEnabled = !_busy && !_recorder.IsBusy && _editor == null;
+            cleanVideo.IsEnabled = !_busy && !_recorder.IsBusy;
+        };
         folder.Click += (_, _) => { if (row.DataContext is RecentItem item) OpenRecentFolder(item); };
         var deleteHeader = new StackPanel { Orientation = Orientation.Horizontal };
         var deleteIcon = new System.Windows.Shapes.Path { Data = System.Windows.Media.Geometry.Parse("M 2,4 L 14,4 M 6,4 L 6,2 L 10,2 L 10,4 M 3.5,4 L 4.5,14 L 11.5,14 L 12.5,4 M 6.5,7 L 6.5,11 M 9.5,7 L 9.5,11"), Width = 14, Height = 14, Stretch = System.Windows.Media.Stretch.Uniform, StrokeThickness = 1.5, StrokeStartLineCap = System.Windows.Media.PenLineCap.Round, StrokeEndLineCap = System.Windows.Media.PenLineCap.Round, Margin = new Thickness(0, 0, 6, 0) };
@@ -413,7 +477,7 @@ public partial class MainWindow : Window
         var delete = new MenuItem { Header = deleteHeader };
         delete.SetResourceReference(MenuItem.ForegroundProperty, "Danger");
         delete.Click += (_, _) => { if (row.DataContext is RecentItem item) DeleteRecent(item); };
-        menu.Items.Add(open); menu.Items.Add(folder); menu.Items.Add(new Separator()); menu.Items.Add(delete); row.ContextMenu = menu;
+        menu.Items.Add(open); menu.Items.Add(edit); menu.Items.Add(editImage); menu.Items.Add(folder); menu.Items.Add(clean); menu.Items.Add(cleanVideo); menu.Items.Add(new Separator()); menu.Items.Add(delete); row.ContextMenu = menu;
     }
     private void RecentMore_Click(object sender, RoutedEventArgs e)
     {
@@ -426,12 +490,16 @@ public partial class MainWindow : Window
     { e.Handled = true; if (sender is FrameworkElement { DataContext: RecentItem item }) OpenRecentFolder(item); }
     private void DeleteRecent(RecentItem item)
     {
-        if (_busy || _recorder.IsBusy) { SetStatus("请先完成当前操作。"); return; }
+        if (_busy || _recorder.IsBusy || _editor != null) { SetStatus("请先完成当前操作。"); return; }
         try
         {
+            bool project = !item.IsVideo && ScreenshotProjects.HasProject(item.Path);
+            if ((project || RecordingRecovery.Owns(item.Path)) && MessageBox.Show(this, project ? "图片和关联原图、标注项目将一起移到回收站。是否继续？" : "此文件是可继续编辑的原片；原片和恢复、剪辑配置将一起清理。是否继续？", "删除关联文件", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(item.Path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            if (project) ScreenshotProjects.Clean(item.Path);
             if (RecordingRecovery.Owns(item.Path) && File.Exists(item.Path + ".json"))
                 Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(item.Path + ".json", Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            if (item.IsVideo) RecordingEditStore.Remove(item.Path);
             RefreshRecent(); SetStatus($"已移到回收站：{Path.GetFileName(item.Path)}");
         }
         catch (Exception ex) { Ui.Error(this, ex); }

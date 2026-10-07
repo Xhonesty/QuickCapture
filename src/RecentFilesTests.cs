@@ -65,7 +65,7 @@ internal static class RecentFilesTests
                 var fullText = new FormattedText(first.Name, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, new Typeface(filename.FontFamily, filename.FontStyle, filename.FontWeight, filename.FontStretch), filename.FontSize, Brushes.Black, 1);
                 Ensure(filename.TextTrimming == TextTrimming.CharacterEllipsis && filename.TextWrapping == TextWrapping.NoWrap && fullText.WidthIncludingTrailingWhitespace > filename.ActualWidth, "A long filename is not constrained to an ellipsis");
                 Ensure(Visuals<FrameworkElement>(firstRow).Any(element => element.ToolTip is string tooltip && tooltip == first.Name), "The full filename is unavailable on hover");
-                Ensure(firstRow.ContextMenu?.Items.Count == 4, "The row no longer exposes file, directory and recycle-bin operations");
+                Ensure(firstRow.ContextMenu?.Items.OfType<MenuItem>().Any(item => item.Header as string == "继续编辑") == true, "Image continue-editing entry is missing");
                 firstRow.Focus(); main.UpdateLayout();
                 var more = Visuals<Button>(firstRow).Single(button => button.ToolTip as string == "更多操作");
                 more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(40);

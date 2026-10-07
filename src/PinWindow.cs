@@ -17,11 +17,11 @@ internal static class PinManager
     private static readonly List<PinWindow> Pins = new();
     internal static bool Hidden { get; private set; }
     internal static int Count => Pins.Count;
-    internal static PinWindow Create(BitmapSource image, Settings settings, Action<string> saved)
+    internal static PinWindow Create(BitmapSource image, Settings settings, Action<string> saved, ScreenshotProject? project = null)
     {
         // Creating a new pin restores visibility for the whole collection.
         if (Hidden) RestoreAll();
-        var pin = new PinWindow(image, settings, saved); Pins.Add(pin);
+        var pin = new PinWindow(image, settings, saved, project); Pins.Add(pin);
         pin.Closed += (_, _) => { Pins.Remove(pin); if (Pins.Count == 0) Hidden = false; };
         pin.Show(); return pin;
     }
@@ -45,6 +45,7 @@ internal static class PinGeometry
 internal sealed class PinWindow : Window
 {
     private readonly BitmapSource _image;
+    private readonly ScreenshotProject? _project;
     private readonly Settings _settings;
     private readonly Action<string> _saved;
     private double _scale = 1;
@@ -55,9 +56,9 @@ internal sealed class PinWindow : Window
     internal double Zoom => _scale;
     internal ContextMenu Menu { get; }
     private MenuItem _through = null!;
-    internal PinWindow(BitmapSource image, Settings? settings = null, Action<string>? saved = null)
+    internal PinWindow(BitmapSource image, Settings? settings = null, Action<string>? saved = null, ScreenshotProject? project = null)
     {
-        Ui.Theme(this); _image = image; _settings = settings ?? new Settings(); _saved = saved ?? (_ => { });
+        Ui.Theme(this); _image = image; _project = project; _settings = settings ?? new Settings(); _saved = saved ?? (_ => { });
         Title = "轻截 · 贴图"; Topmost = true; ShowInTaskbar = false; ShowActivated = false;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; AllowsTransparency = true; Background = Brushes.Transparent;
         Width = Math.Min(image.PixelWidth, 650); Height = Math.Min(image.PixelHeight, 500);
@@ -90,7 +91,7 @@ internal sealed class PinWindow : Window
             item.Click += (_, _) => action(); menu.Items.Add(item); return item;
         }
         Item("复制图片", async () => { try { await ImageExportService.CopyAsync(_image, _settings.ScreenshotFormat, _settings.ScreenshotQuality); } catch (Exception ex) { Ui.Error(this, ex); } });
-        Item("保存图片…", () => { try { var dialog = new ScreenshotSaveWindow(this, _image, _settings); if (dialog.ShowDialog() == true) _saved(dialog.SavedPath!); } catch (Exception ex) { Ui.Error(this, ex); } });
+        Item("保存图片…", () => { try { var dialog = new ScreenshotSaveWindow(this, _image, _settings, _project == null ? null : (path,format,quality,overwrite)=>ScreenshotProjects.SaveAsync(_project,_image,path,format,quality,overwrite)); if (dialog.ShowDialog() == true) _saved(dialog.SavedPath!); } catch (Exception ex) { Ui.Error(this, ex); } });
         menu.Items.Add(new Separator());
         Item("恢复原尺寸 · Ctrl+0", ResetSize);
         var opacity = Item("透明度", () => { });

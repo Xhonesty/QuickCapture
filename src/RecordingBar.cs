@@ -36,7 +36,7 @@ internal sealed class RecordingBar : Window
     public RecordingBar(string hotkey, Action stop) : this(hotkey, stop, null) { }
 
     public RecordingBar(string hotkey, Action stop, Action? togglePause, Func<TimeSpan>? elapsed = null,
-        Func<Drawing.Rectangle?>? targetBounds = null, bool displayCapture = false)
+        Func<Drawing.Rectangle?>? targetBounds = null, bool displayCapture = false, AudioMonitor? audio = null)
     {
         _elapsed = elapsed; _targetBounds = targetBounds; _displayCapture = displayCapture;
         Ui.Theme(this);
@@ -47,6 +47,7 @@ internal sealed class RecordingBar : Window
         panel.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); panel.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var drag = new StackPanel { Orientation = Orientation.Horizontal, Cursor = Cursors.SizeAll, Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
         var info = new StackPanel(); info.Children.Add(_time); info.Children.Add(_status); drag.Children.Add(_marker); drag.Children.Add(info);
+        if (audio != null) { Width = 360; Height = 84; var levels = new AudioLevels(true) { Width = 124 }; info.Children.Add(levels); _timer.Tick += (_, _) => levels.Update(audio); }
         _status.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary"); panel.Children.Add(drag);
         _pause = Ui.Button("暂停", () => togglePause?.Invoke()); _pause.Name = "RecordingPause"; _pause.Width = 66; _pause.Margin = new Thickness(4, 0, 6, 0);
         _pause.ToolTip = "暂停／继续当前录像；暂停时不录入声音或画面"; _pause.IsEnabled = false; Grid.SetColumn(_pause, 1); panel.Children.Add(_pause);

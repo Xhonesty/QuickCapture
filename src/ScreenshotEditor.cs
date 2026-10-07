@@ -34,6 +34,9 @@ internal sealed class ScreenshotEditor : IDisposable
     internal bool MosaicFreehand => _mosaicMode?.SelectedIndex == 1;
     private Point? _start;
     private string? _lastSave;
+    private string? _projectPath;
+    private ScreenshotFormat _projectFormat;
+    private int _projectQuality;
     private (ScreenshotFormat Format, int Quality) _savedSettings;
     private bool _finishing;
     private IReadOnlyList<ToolDefinition> _definitions = Array.Empty<ToolDefinition>();
@@ -83,14 +86,16 @@ internal sealed class ScreenshotEditor : IDisposable
     public AnnotationTool Tool { get; private set; } = AnnotationTool.Crop;
     public event Action? ToolChanged;
 
-    public ScreenshotEditor(Window owner, BitmapSource image, Settings settings, Action<string> saved, Action complete, Int32Rect? crop = null)
+    public ScreenshotEditor(Window owner, BitmapSource image, Settings settings, Action<string> saved, Action complete, Int32Rect? crop = null, ScreenshotProject? project = null)
     {
         _owner = owner; _settings = settings; _saved = saved; _complete = complete;
-        _nextStep = settings.StepStart;
+        _nextStep = project?.NextStep ?? settings.StepStart;
+        _projectPath = project?.ExportPath; _projectFormat = project?.Format ?? settings.ScreenshotFormat; _projectQuality = project?.Quality ?? settings.ScreenshotQuality;
         _inputMethodEnabled = InputMethod.GetIsInputMethodEnabled(owner);
         // Tool gestures bypass IME; the in-place TextBox explicitly enables it.
         InputMethod.SetIsInputMethodEnabled(owner, false);
-        Surface = new AnnotationSurface(image, crop) { Cursor = Cursors.SizeAll };
+        Surface = new AnnotationSurface(image, project?.Crop ?? crop) { Cursor = Cursors.SizeAll };
+        if (project != null) Surface.Restore(project.Annotations);
         // IsInputMethodEnabled does not inherit from the window. A focused
         // canvas must disable it explicitly, while text inputs enable it.
         InputMethod.SetIsInputMethodEnabled(Surface, false);
@@ -222,7 +227,7 @@ internal sealed class ScreenshotEditor : IDisposable
     internal void ShowShapes() { if (Surface.Selected?.Tool != AnnotationTool.Rectangle) SelectTool(AnnotationTool.Rectangle); RefreshColors(); }
     internal void Undo() { CancelText(); CancelStroke(); Surface.Undo(); }
     internal void Redo() { CancelText(); CancelStroke(); Surface.Redo(); }
-    internal void Pin() { if (!FinishText()) return; HideOptions(); _toolbar?.HideProperties(); PinManager.Create(Surface.Export(), _settings, _saved); _complete(); }
+    internal void Pin() { if (!FinishText()) return; HideOptions(); _toolbar?.HideProperties(); PinManager.Create(Surface.Export(), _settings, _saved, ScreenshotProjects.Snapshot(Surface,_nextStep,_projectFormat,_projectQuality)); _complete(); }
     internal void ExtractText()
     {
         if (!FinishText()) return; CancelStroke(); HideOptions(); _toolbar?.HideProperties();
@@ -583,27 +588,60 @@ internal sealed class ScreenshotEditor : IDisposable
             }
             return;
         }
+        if (key == Key.S && modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled=true; SaveAs(); return; }
         if (modifiers != ModifierKeys.None) return;
         var definition = _definitions.FirstOrDefault(d => d.Shortcut == key);
         if (definition != null && definition.CanExecute?.Invoke() != false) { e.Handled = true; definition.Execute(); }
     }
-    internal string SaveImage()
+    internal string SaveImage() { string path=SaveImageAsync().GetAwaiter().GetResult(); _saved(path); return path; }
+    private Task<string> SaveImageAsync()
     {
         if (!FinishText()) throw new InvalidOperationException("请先完成输入法选词。");
-        if (_lastSave != null && _savedSettings == (_settings.ScreenshotFormat, _settings.ScreenshotQuality)) return _lastSave;
-        string path = Paths.NewCapture(_settings.OutputDirectory, ImageExportService.Extension(_settings.ScreenshotFormat));
-        ImageExportService.Save(Surface.Export(), path, _settings.ScreenshotFormat, _settings.ScreenshotQuality); _lastSave = path; _savedSettings = (_settings.ScreenshotFormat, _settings.ScreenshotQuality); _saved(path); return path;
+        if (_lastSave != null && _savedSettings == (_settings.ScreenshotFormat, _settings.ScreenshotQuality)) return Task.FromResult(_lastSave);
+        string path = _projectPath ?? Paths.NewCapture(_settings.OutputDirectory, ImageExportService.Extension(_settings.ScreenshotFormat));
+        var format = _projectPath != null ? _projectFormat : _settings.ScreenshotFormat; int quality = _projectPath != null ? _projectQuality : _settings.ScreenshotQuality;
+        var snapshot = ScreenshotProjects.Snapshot(Surface,_nextStep,format,quality,path); var rendered = Surface.Export();
+        return SaveSnapshotAsync(snapshot,rendered,path,format,quality,_projectPath != null);
     }
-    internal void SaveAndComplete()
+    private async Task<string> SaveSnapshotAsync(ScreenshotProject snapshot, BitmapSource rendered, string path, ScreenshotFormat format, int quality, bool overwrite)
+    {
+        await ScreenshotProjects.SaveAsync(snapshot,rendered,path,format,quality,overwrite).ConfigureAwait(false);
+        _lastSave = path; _savedSettings = (_settings.ScreenshotFormat, _settings.ScreenshotQuality);
+        // Synchronous SaveImage remains available to existing fixtures; callback is dispatched by async production callers.
+        return path;
+    }
+    internal bool Saving => _finishing;
+    internal async void SaveAndComplete()
     {
         if (_finishing || !FinishText()) return; _finishing = true; UpdateButtons(); HideOptions(); _toolbar?.HideProperties();
         try
         {
-            var dialog = new ScreenshotSaveWindow(_owner, Surface.Export(), _settings);
-            if (dialog.ShowDialog() == true) { _saved(dialog.SavedPath!); _complete(); }
-            else { _finishing = false; UpdateButtons(); }
+            if (_projectPath != null) { string saved = await SaveImageAsync(); _saved(saved); _finishing=false; UpdateButtons(); }
+            else
+            {
+                var rendered=Surface.Export(); var snapshot=ScreenshotProjects.Snapshot(Surface,_nextStep,_settings.ScreenshotFormat,_settings.ScreenshotQuality);
+                var dialog = new ScreenshotSaveWindow(_owner,rendered,_settings,(path,format,quality,overwrite)=>ScreenshotProjects.SaveAsync(snapshot,rendered,path,format,quality,overwrite));
+                if (dialog.ShowDialog() == true) { _saved(dialog.SavedPath!); _finishing=false; _complete(); }
+                else { _finishing = false; UpdateButtons(); }
+            }
         }
         catch (Exception ex) { _finishing = false; UpdateButtons(); Ui.Error(_owner, ex); }
+    }
+    internal void SaveAs()
+    {
+        if (_finishing || !FinishText()) return; _finishing=true; UpdateButtons(); HideOptions(); _toolbar?.HideProperties();
+        try
+        {
+            var rendered=Surface.Export(); var snapshot=ScreenshotProjects.Snapshot(Surface,_nextStep,_projectFormat,_projectQuality);
+            var dialog=new ScreenshotSaveWindow(_owner,rendered,_settings,(path,format,quality,overwrite)=>
+            {
+                if (_projectPath != null && System.IO.Path.GetFullPath(path).Equals(System.IO.Path.GetFullPath(_projectPath),StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("另存为请使用不同文件名。");
+                return ScreenshotProjects.SaveAsync(snapshot,rendered,path,format,quality,overwrite);
+            });
+            if(dialog.ShowDialog()==true) { _projectPath=dialog.SavedPath!; _projectFormat=dialog.SavedFormat; _projectQuality=dialog.SavedQuality; _lastSave=null; _saved(_projectPath); }
+        }
+        catch(Exception ex) { Ui.Error(_owner,ex); }
+        finally { _finishing=false; UpdateButtons(); }
     }
     internal async Task CopyAndCompleteAsync()
     {
@@ -612,8 +650,8 @@ internal sealed class ScreenshotEditor : IDisposable
         {
             var bitmap = Surface.Export();
             await ImageExportService.CopyAsync(bitmap, _settings.ScreenshotFormat, _settings.ScreenshotQuality);
-            if (_settings.AutoSaveScreenshot) SaveImage();
-            _complete();
+            if (_settings.AutoSaveScreenshot) _saved(await SaveImageAsync());
+            _finishing=false; _complete();
         }
         catch (Exception ex) { _finishing = false; UpdateButtons(); Ui.Error(_owner, ex); }
     }

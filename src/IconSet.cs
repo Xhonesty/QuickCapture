@@ -9,14 +9,17 @@ using System.Xml.Linq;
 
 namespace QuickCapture;
 
-// Lucide SVG primitives become WPF vector geometry, never rasterized fonts.
+// SVG primitives become WPF vector geometry, with per-primitive currentColor
+// fill/stroke and opacity. Both outlined Lucide and solid pixel icons share the
+// toolbar's Foreground binding for theme, selection and disabled states.
 internal static class IconSet
 {
     internal static FrameworkElement Create(string name)
     {
         using var stream = Application.GetResourceStream(new Uri($"pack://application:,,,/Assets/Icons/{name}.svg")).Stream;
-        var group = new GeometryGroup();
-        foreach (var node in XDocument.Load(stream).Root!.Elements())
+        var svg = XDocument.Load(stream).Root!;
+        var canvas = new Canvas { Width = 24, Height = 24, IsHitTestVisible = false };
+        foreach (var node in svg.Elements())
         {
             double N(string attribute) => double.Parse((string?)node.Attribute(attribute) ?? "0", CultureInfo.InvariantCulture);
             string D(string attribute) => (string?)node.Attribute(attribute) ?? "";
@@ -31,12 +34,17 @@ internal static class IconSet
                 "polygon" => Geometry.Parse("M " + D("points") + " Z"),
                 _ => null
             };
-            if (geometry != null) group.Children.Add(geometry);
+            if (geometry == null) continue;
+            geometry.Freeze();
+            var path = new Path { Data = geometry, StrokeThickness = 2, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round };
+            Binding Foreground() => new("Foreground") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Button), 1) };
+            string Attribute(string key, string fallback) => (string?)node.Attribute(key) ?? (string?)svg.Attribute(key) ?? fallback;
+            if (Attribute("stroke", "currentColor") != "none") path.SetBinding(Shape.StrokeProperty, Foreground());
+            if (Attribute("fill", "none") == "currentColor") path.SetBinding(Shape.FillProperty, Foreground());
+            path.StrokeThickness = double.Parse(Attribute("stroke-width", "2"), CultureInfo.InvariantCulture);
+            path.Opacity = double.Parse(Attribute("opacity", "1"), CultureInfo.InvariantCulture);
+            canvas.Children.Add(path);
         }
-        group.Freeze();
-        var path = new Path { Data = group, StrokeThickness = 2, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round };
-        path.SetBinding(Shape.StrokeProperty, new Binding("Foreground") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Button), 1) });
-        var canvas = new Canvas { Width = 24, Height = 24, IsHitTestVisible = false }; canvas.Children.Add(path);
         return new Viewbox { Width = UiDesign.Number("IconSize"), Height = UiDesign.Number("IconSize"), Child = canvas, IsHitTestVisible = false };
     }
 }
