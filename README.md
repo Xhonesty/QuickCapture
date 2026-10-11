@@ -13,6 +13,34 @@
 - **视频编辑**：首尾截取、多段删除、区间变速、画面裁剪与静音；添加矩形、圆角矩形、椭圆、箭头、线条、画笔、多行文字、马赛克及图片或视频画中画。箭头、线条和画笔的本体与描边分别设置颜色、透明度和粗细；文字支持粗体、斜体、字形描边与独立文字边框。画中画可置于四角或中心。支持图层调整、时间轴吸附、撤销重做、逐帧预览及保存后继续编辑。
 - **日常使用**：最近文件、可配置全局快捷键、显示当前快捷键的托盘菜单、浅色与深色主题；截图保存为 PNG / JPG / WebP / BMP，视频导出为 MP4 / WebM / GIF。
 
+## 界面预览
+
+**截图文字标注**：字体、描边、文字边框与填充分别设置，属性按功能组自动换行。
+
+<p align="center"><img src="docs/images/screenshot-text-toolbar.png" width="690" alt="截图文字属性栏：自动换行、字形描边、文字边框与透明填充" /></p>
+
+<table>
+<tr><th>颜色与透明度</th><th>本地文字识别</th></tr>
+<tr>
+<td align="center" valign="top"><img src="docs/images/color-picker.png" width="330" alt="调色面板：预设颜色、透明度、吸管与应用颜色" /></td>
+<td align="center" valign="top"><img src="docs/images/ocr-text-extraction.png" width="420" alt="本地 OCR：中英文识别结果可编辑并复制" /></td>
+</tr>
+<tr><td>在调色面板中预览、取色，再应用颜色。</td><td>识别截图中的文字，编辑后直接复制。</td></tr>
+</table>
+
+**视频编辑**：在暂停画面上添加标注，通过时间轴调整生效区间，再选择格式导出。
+
+<p align="center"><img src="docs/images/video-editor.jpg" width="900" alt="视频编辑界面：箭头描边、对象属性、时间轴与导出选项" /></p>
+
+<table>
+<tr><th>置顶贴图</th><th>托盘与快捷键</th></tr>
+<tr>
+<td align="center" valign="top"><img src="docs/images/pinned-image-menu.png" width="275" alt="贴图菜单：缩放恢复、透明度、鼠标穿透与隐藏" /></td>
+<td align="center" valign="top"><img src="docs/images/tray-shortcuts.png" width="326" alt="托盘菜单显示当前配置的截图和录屏快捷键" /></td>
+</tr>
+<tr><td>调整透明度或鼠标穿透，方便桌面对照。</td><td>菜单显示当前绑定；快捷键可在设置中修改。</td></tr>
+</table>
+
 ## 开始使用
 
 1. **截图**：选择模式并点击“开始截图”，框选后使用浮动工具栏标注，复制或保存结果。按 `T` 添加文字，按 `O` 提取文字。

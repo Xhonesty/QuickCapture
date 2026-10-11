@@ -24,6 +24,12 @@ docs/*.md
 !docs/design-spec.md
 docs/images/*
 !docs/images/main-simplified-light.png
+!docs/images/screenshot-text-toolbar.png
+!docs/images/color-picker.png
+!docs/images/ocr-text-extraction.png
+!docs/images/video-editor.jpg
+!docs/images/pinned-image-menu.png
+!docs/images/tray-shortcuts.png
 
 # Downloaded reference material; upstream licensing is in THIRD-PARTY-NOTICES.txt.
 docs/Options.h

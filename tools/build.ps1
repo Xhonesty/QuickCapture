@@ -68,7 +68,12 @@ New-Item -ItemType Directory -Path $upgradeDocs -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\installer.md') -Destination $upgradeDocs
 $readmeImages = Join-Path $upgradeDocs 'images'
 New-Item -ItemType Directory -Path $readmeImages -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\images\main-simplified-light.png') -Destination $readmeImages
+$imageNames = [regex]::Matches((Get-Content -LiteralPath (Join-Path $projectRoot 'README.md') -Raw), 'docs/images/(?<name>[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|svg))') | ForEach-Object { $_.Groups['name'].Value } | Sort-Object -Unique
+foreach ($imageName in $imageNames) {
+    $imagePath = Join-Path $projectRoot ('docs\images\' + $imageName)
+    if ((Get-Item -LiteralPath $imagePath -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'README image cannot be a reparse point.' }
+    Copy-Item -LiteralPath $imagePath -Destination $readmeImages
+}
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $publishOutput 'QuickCapture.runtimeconfig.json') -Raw | ConvertFrom-Json
 foreach ($framework in $runtimeConfig.runtimeOptions.includedFrameworks) {
     if ($framework.name -eq 'Microsoft.NETCore.App') { $label = 'Core'; $packageName = 'microsoft.netcore.app.runtime.win-x64' }
