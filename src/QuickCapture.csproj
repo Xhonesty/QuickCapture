@@ -12,9 +12,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <AssemblyName>QuickCapture</AssemblyName>
-    <Version>0.11.0</Version>
+    <Version>1.0.0</Version>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="QuickCapture.Tests" />
     <Resource Include="Assets/app.ico" />
     <Resource Include="Assets/app.png" />
     <Resource Include="Assets/Icons/*.svg" />

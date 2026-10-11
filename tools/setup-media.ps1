@@ -1,26 +1,23 @@
-param([string]$ArchivePath)
+param([string]$ArchivePath, [switch]$Offline, [string]$Python = 'python', [string]$Bash)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$destination = Join-Path $projectRoot 'vendor\media'
-$manifest = Get-Content -LiteralPath (Join-Path $destination 'manifest.json') -Raw | ConvertFrom-Json
-$downloadDirectory = Join-Path $projectRoot '.tools\media-download'
-New-Item -ItemType Directory -Path $downloadDirectory -Force | Out-Null
-if (!$ArchivePath) {
-    $ArchivePath = Join-Path $downloadDirectory 'ffmpeg-essentials.zip'
-    if (!(Test-Path -LiteralPath $ArchivePath)) { Invoke-WebRequest -Uri $manifest.url -OutFile $ArchivePath }
+$destination = Join-Path $projectRoot 'vendor/media'
+if (-not $ArchivePath) {
+    & (Join-Path $PSScriptRoot 'build-media.ps1') -Offline:$Offline -Python $Python -Bash $Bash
+    return
 }
-if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $manifest.archiveSha256) { throw 'FFmpeg ZIP 校验失败；请检查固定版本下载，不会安装不匹配的文件。' }
-# Extract only the two expected executables, with no recursive moving or deleting.
-$zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $ArchivePath).Path)
+$manifest = Get-Content -LiteralPath (Join-Path $destination 'manifest.json') -Raw | ConvertFrom-Json
+if ($manifest.layout -ne 'shared' -or (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $manifest.archiveSha256) { throw 'Shared media bundle SHA-256 does not match the pinned manifest.' }
+$zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $ArchivePath).Path)
 try {
-    foreach ($name in @('ffmpeg', 'ffprobe')) {
-        $entry = $zip.Entries | Where-Object { $_.FullName -eq "ffmpeg-9.0.2-essentials_build/bin/$name.exe" }
-        if (!$entry) { throw "缺少 $name.exe" }
-        $target = Join-Path $destination "$name.exe"
-        $resolvedTarget = [System.IO.Path]::GetFullPath($target)
-        if (![System.IO.Path]::GetDirectoryName($resolvedTarget).Equals([System.IO.Path]::GetFullPath($destination), [System.StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe output path.' }
-        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $resolvedTarget, $true)
-        if ((Get-FileHash -LiteralPath $resolvedTarget -Algorithm SHA256).Hash -ne $manifest."${name}Sha256") { throw "$name.exe 校验失败" }
+    foreach ($file in $manifest.files) {
+        if ($file.name -ne [IO.Path]::GetFileName($file.name) -or $file.name -notmatch '\.(exe|dll)$') { throw 'Invalid media manifest filename.' }
+        $entry = $zip.GetEntry($file.name)
+        if (-not $entry -or $entry.Length -ne $file.size) { throw "Media dependency missing: $($file.name)" }
+        $target = [IO.Path]::GetFullPath((Join-Path $destination $file.name))
+        if ([IO.Path]::GetDirectoryName($target) -ne [IO.Path]::GetFullPath($destination)) { throw 'Unsafe media output path.' }
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)
+        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $file.sha256) { throw "Media dependency checksum mismatch: $($file.name)" }
     }
 } finally { $zip.Dispose() }
-Write-Output "已安装固定版本 FFmpeg $($manifest.version)，运行 tools/build.ps1 将工具加入便携版。"
+Write-Output "Verified shared FFmpeg $($manifest.version) and all required DLLs."

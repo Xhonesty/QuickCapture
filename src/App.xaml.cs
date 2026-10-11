@@ -11,6 +11,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent, new RoutedEventHandler((sender, _) => { if (sender is Window window) window.Icon = Ui.AppIcon; }));
         if (Array.IndexOf(e.Args, "--ocr-worker") == 0) { Shutdown(OcrService.RunWorker(e.Args)); return; }
         DispatcherUnhandledException += (_, args) =>
         {
@@ -18,18 +19,6 @@ public partial class App : Application
             MessageBox.Show(args.Exception.Message, "轻截 · 操作失败", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };
-        if (Array.IndexOf(e.Args, "--self-test") >= 0)
-        {
-            int code = await SelfTest.RunAsync(e.Args);
-            Shutdown(code);
-            return;
-        }
-        if (Array.IndexOf(e.Args, "--text-demo") >= 0)
-        {
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            await AcceptanceArtifacts.RunDemoAsync(true);
-            return;
-        }
         _instance = new Mutex(true, "Local\\QuickCapture.Personal.x64", out bool created);
         if (!created)
         {
@@ -41,13 +30,4 @@ public partial class App : Application
         catch (Exception ex) { ErrorLog.Write(ex); MessageBox.Show(ex.Message, "轻截启动失败"); Shutdown(1); }
     }
     protected override void OnExit(ExitEventArgs e) { OcrService.CancelActive(); _instance?.Dispose(); base.OnExit(e); }
-}
-
-internal static class ErrorLog
-{
-    public static void Write(Exception ex)
-    {
-        try { Directory.CreateDirectory(Paths.Data); File.AppendAllText(Path.Combine(Paths.Data, "errors.log"), $"{DateTime.Now:O} {ex}\n"); }
-        catch { /* Error reporting must not mask the original failure. */ }
-    }
 }

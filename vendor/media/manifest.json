@@ -1,10 +1,87 @@
 {
-  "version": "9.0.2-essentials_build-www.gyan.dev",
-  "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip",
-  "archiveSha256": "60F467265B1E312373DBCD92200C2618A74850F98D3D078E94296BB3FA2047BA",
-  "ffmpegSha256": "3256173F3F8BFFD7DF12227C68ADF68025EDB1832273A9530688A7BB1ED8EDEC",
-  "ffprobeSha256": "F0D36ECBBDD3BCFAC3EFA078C96C7271C2E68B3810595552AC3B7F17E9A65C52",
+  "version": "9.0.2-quickcapture-shared",
+  "layout": "shared",
   "license": "GPL-3.0-or-later",
-  "buildSource": "https://www.gyan.dev/ffmpeg/builds/",
-  "ffmpegSource": "https://github.com/FFmpeg/FFmpeg/tree/946fcce07b"
+  "buildSource": "tools/build-media.ps1",
+  "ffmpegSource": "https://github.com/FFmpeg/FFmpeg/tree/946fcce07b",
+  "buildInputs": "build-inputs.json",
+  "files": [
+    {
+      "name": "avcodec-63.dll",
+      "size": 11280896,
+      "sha256": "5487f3bea95e17afdcf811b9829d9d852795e567093ec54b42cc96c861821c82"
+    },
+    {
+      "name": "avdevice-63.dll",
+      "size": 66048,
+      "sha256": "d3b6a464345141172fcc003a4804a050b83544419a56d7552e7234359e53de98"
+    },
+    {
+      "name": "avfilter-12.dll",
+      "size": 3262464,
+      "sha256": "bc47638e1c7f98a70c9ea2ca3bc0e6286b289df777d26b0c5243b7cf014a4759"
+    },
+    {
+      "name": "avformat-63.dll",
+      "size": 3116544,
+      "sha256": "2573576f44849d95df1578c2b0e618589fcea7044f22ab03c454cee9e29966f5"
+    },
+    {
+      "name": "avutil-61.dll",
+      "size": 690688,
+      "sha256": "e249121429d4408815180dec231c38ee2567b0733b6ac611c977eadce51e4dff"
+    },
+    {
+      "name": "ffmpeg.exe",
+      "size": 387072,
+      "sha256": "0b69da9f5b188330e956ee28f0cc25a73f3d6c9a557bb1020e1795b6faaa03c4"
+    },
+    {
+      "name": "ffprobe.exe",
+      "size": 183296,
+      "sha256": "9e05c5cbeda1fca98f05d037aaaae16535869541bf0e064a131b3826f18db549"
+    },
+    {
+      "name": "libdav1d-7.dll",
+      "size": 1929830,
+      "sha256": "bbe67862f77c22f6f509684207b5363542e5b52c1a1faa354e12a11d072ad766"
+    },
+    {
+      "name": "libopus-0.dll",
+      "size": 492271,
+      "sha256": "c12f9a671a106c649a5517d28061670aa57c805d242b80764853a7551099498d"
+    },
+    {
+      "name": "libvpx-1.dll",
+      "size": 4405542,
+      "sha256": "759bb95b0cd6c75bfce910f003b26a2d95ed3c94ef1a20dcfd4c89a0569f2016"
+    },
+    {
+      "name": "libwinpthread-1.dll",
+      "size": 56832,
+      "sha256": "a723a7cdacda9c1d671e39e0d9c323328cfadb53a9a1f439908105d72ba623bd"
+    },
+    {
+      "name": "libx264-165.dll",
+      "size": 2017572,
+      "sha256": "a58995b5af6d0fcf5d17f354bfa54bb05d99056ed167eec9c8e86a3a63478ec1"
+    },
+    {
+      "name": "swresample-7.dll",
+      "size": 103936,
+      "sha256": "6b18e6f7d636bbe460d76d59ac44077350fa9de00068b8b9cbd7a7cf524d434a"
+    },
+    {
+      "name": "swscale-10.dll",
+      "size": 915456,
+      "sha256": "28bd77b81c8ea4538bc264a8d65896484cc53a9b80cd5c570481db2c5b2c6269"
+    },
+    {
+      "name": "zlib1.dll",
+      "size": 127291,
+      "sha256": "11cd91171765cd65f1c3362e3df67e5f5a618a6b88c8cdec899b802eaf1c7b0d"
+    }
+  ],
+  "archiveName": "QuickCapture-media-9.0.2-shared-x64.zip",
+  "archiveSha256": "f4f14f7a84a534d4ce32609f6572ee84585b684a2a5772178ef6ae6e273aa5ae"
 }

@@ -1,0 +1,29 @@
+#include <windows.h>
+1 RT_MANIFEST "launcher.manifest"
+1 ICON "app.ico"
+
+1 VERSIONINFO
+FILEVERSION @VERSION_NUMERIC@
+PRODUCTVERSION @VERSION_NUMERIC@
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Xhonesty\0"
+      VALUE "FileDescription", "QuickCapture Uninstall\0"
+      VALUE "FileVersion", "@VERSION_TEXT@\0"
+      VALUE "InternalName", "uninsQuickCapture\0"
+      VALUE "OriginalFilename", "uninsQuickCapture.exe\0"
+      VALUE "ProductName", "QuickCapture\0"
+      VALUE "ProductVersion", "@VERSION_TEXT@\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

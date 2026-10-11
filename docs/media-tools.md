@@ -32,18 +32,20 @@ GIF 支持 5 / 10 / 15 / 20 / 30 FPS；界面明确提示丢弃音频及动画�
 
 按“设置中指定的工具目录 → 系统 PATH → 程序附带的 `Tools/media`”检测 `ffmpeg.exe` 和 `ffprobe.exe`。检测实际编码器与滤镜；系统工具损坏或不完整时尝试捆绑工具。
 
-本次便携版包含固定版本 **9.0.2-essentials_build-www.gyan.dev** 的 FFmpeg / ffprobe。新电脑开发构建时：
+运行包包含项目专用的 **FFmpeg 9.0.2 共享构建**，`ffmpeg.exe` 与 `ffprobe.exe` 使用同目录的公共 DLL。保留完整 `Tools/media` 目录，不要单独移动两个 EXE。
+
+源码构建使用 `tools/build-media.ps1`：FFmpeg 源码、编码库、工具归档与 SHA-256 固定于 `vendor/media/build-inputs.json`；两个 EXE 和所需 DLL 的版本、尺寸与 SHA-256 记录于 `vendor/media/manifest.json`。启用 libx264、libvpx、libopus、libdav1d、zlib，保留原生编解码器和滤镜。采集仍由 ScreenRecorderLib / Windows Media Foundation 完成。
 
 ```powershell
-.\tools\setup-media.ps1
-.\tools\build.ps1
+# 首次准备共享媒体库：需要 Python、Git Bash、MinGW-w64 x64 GCC
+.\tools\build-media.ps1
+# 已下载全部固定构建输入时
+.\tools\build-media.ps1 -Offline
+# 已有本项目生成的共享媒体 ZIP 时，仅按固定清单校验并恢复运行文件
+.\tools\setup-media.ps1 -ArchivePath 'artifacts/media/QuickCapture-media-9.0.2-shared-x64.zip'
 ```
 
-脚本从 [Gyan 固定版本构建](https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip) 下载，核对 ZIP 及两个 EXE 的 SHA-256。版本、哈希及来源在 `vendor/media/manifest.json`；二进制不进入 Git。也可使用已经下载的 ZIP：
-
-```powershell
-.\tools\setup-media.ps1 -ArchivePath 'C:\Downloads\ffmpeg-9.0.2-essentials_build.zip'
-```
+二进制、源码归档和开发工具缓存不进入 Git。媒体构建源码、头文件和导入库不进入运行包；上游许可证、编码库版权与构建配置仍随包保留。
 
 若使用自己的 FFmpeg，在设置中选其所在目录，目录需含 `ffmpeg.exe` 和 `ffprobe.exe`；或者把两者加入系统 PATH。所需视频编码器为 `libx264` / `aac` / `libvpx-vp9` / `libopus`，GIF 需 `gif`、`palettegen`、`paletteuse`，编辑需 `trim`、`atrim`、`setpts`、`asetpts`、`atempo`、`crop`、`scale`、`fps`、`split`。
 
@@ -55,4 +57,4 @@ GIF 支持 5 / 10 / 15 / 20 / 30 FPS；界面明确提示丢弃音频及动画�
 
 退出时只完成母版录制，不打开导出窗口，下次启动继续。强制杀进程或断电可能使未完成的 `.partial.mp4` 无法播放；这种文件不进入最近列表。
 
-上游技术依据：[FFmpeg 滤镜文档](https://ffmpeg.org/ffmpeg-filters.html)、[构建说明](https://www.gyan.dev/ffmpeg/builds/)、[对应 FFmpeg 源码](https://github.com/FFmpeg/FFmpeg/tree/946fcce07b)。捆绑工具独立进程调用，使用上游 GPLv3 构建；许可及构建配置随包提供于 `licenses`。
+上游技术依据：[FFmpeg 滤镜文档](https://ffmpeg.org/ffmpeg-filters.html)、[Windows 构建说明](https://ffmpeg.org/platform.html)、[对应 FFmpeg 源码](https://github.com/FFmpeg/FFmpeg/tree/946fcce07b)。捆绑工具独立进程调用，使用上游 GPLv3 构建；许可及构建配置随包提供于 `licenses`。

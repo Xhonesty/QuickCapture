@@ -37,16 +37,28 @@ MIT license; Skia and bundled native libraries retain their own notices.
 Full license and third-party notices: licenses/SkiaSharp.txt and
 licenses/Skia-native-NOTICES.txt.
 
-FFmpeg / ffprobe 9.0.2-essentials_build-www.gyan.dev
-https://www.gyan.dev/ffmpeg/builds/
-https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2
+FFmpeg / ffprobe 9.0.2-quickcapture-shared
 Corresponding FFmpeg source: https://github.com/FFmpeg/FFmpeg/tree/946fcce07b
-GPLv3 static build, called as separate command-line processes.
-Unmodified executable hashes, download URL and version are recorded in
-Tools/media/manifest.json (source tree: vendor/media/manifest.json).
+GPLv3 shared build, called as separate command-line processes. Both executables
+use the same FFmpeg DLLs; QuickCapture does not link its application assembly
+to these libraries. Source is unmodified; the configuration is project-specific.
+All runtime file hashes and versions are recorded in Tools/media/manifest.json
+(source tree: vendor/media/manifest.json). Pinned source and package checksums,
+package download URLs and corresponding source URLs are in build-inputs.json.
 Full license and build configuration: licenses/FFmpeg.txt and
-licenses/FFmpeg-build.txt. Executables are excluded from the Git repository;
-tools/setup-media.ps1 obtains and verifies the pinned upstream package.
+licenses/FFmpeg-build.txt. Recipe: tools/build-media.ps1, build-media.sh and
+build-media.py. Executables and DLLs are excluded from the Git repository.
+tools/setup-media.ps1 verifies a local shared runtime archive or builds from
+the pinned inputs. Build tools and development libraries are not distributed.
+
+FFmpeg shared codec dependencies (MSYS2 UCRT64 packages)
+https://packages.msys2.org/
+libx264 0.165.r3222.b35605a (GPL-2.0-or-later), libvpx 1.17.0 (BSD-3-Clause),
+Opus 1.6.1 (BSD-3-Clause), dav1d 1.5.4 (BSD-2-Clause), zlib 1.3.2 (Zlib),
+and MinGW-w64 winpthreads runtime 14.0.0.r426.g4564ee4b5 (MIT).
+Upstream licenses and libvpx patent notice are in licenses/FFmpeg-dependencies.
+Package-level source locations are recorded alongside the exact archive
+checksums in Tools/media/build-inputs.json.
 
 Tesseract .NET wrapper 5.2.0 / Tesseract native 5.2.0
 https://github.com/charlesw/tesseract/tree/5.2.0
@@ -70,3 +82,20 @@ NAudio.Core / NAudio.Wasapi 2.2.1
 https://github.com/naudio/NAudio
 MIT License; full text in licenses/NAudio.txt.
 Copyright 2020 Mark Heath
+
+Inno Setup 7.1.0 (installer engine and build tooling)
+https://github.com/jrsoftware/issrc/tree/is-7_1_0
+Copyright (C) 1997-2026 Jordan Russell.
+Portions Copyright (C) 2000-2026 Martijn Laan.
+Full license: licenses/InnoSetup-LICENSE.txt.
+Build compiler is obtained by tools/setup-installer.ps1 and kept outside the
+runtime payload. Chinese Simplified translation retains its upstream header
+in installer/languages/ChineseSimplified.isl, copied unchanged from this tag.
+
+MinGW-w64 runtime / GCC runtime (native uninstall launcher only)
+https://www.mingw-w64.org/
+https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+Full notices: licenses/MinGW-w64-runtime.txt, licenses/GCC-GPLv3.txt,
+and licenses/GCC-Runtime-Exception.txt.
+The build compiler is not bundled. The launcher uses Windows system DLLs and
+statically linked compiler runtime; it does not require a .NET installation.

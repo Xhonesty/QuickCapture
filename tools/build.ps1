@@ -1,8 +1,16 @@
 param([switch]$Offline, [switch]$Test, [switch]$Microphone, [string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$publishOutput = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, $projectRoot) } else { Join-Path $projectRoot 'dist' }
+$publishOutput = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, $projectRoot) } else { Join-Path $projectRoot ('artifacts\builds\application-' + [guid]::NewGuid().ToString('N')) }
 if (-not $publishOutput.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Build output must stay inside the QuickCapture project.' }
+# A fresh directory prevents stale runtime files, diagnostics and user media
+# from entering a new release; an earlier dist copy is never deleted.
+if ((Test-Path -LiteralPath $publishOutput) -and @(Get-ChildItem -LiteralPath $publishOutput -Force).Count -gt 0) { throw 'Publish directory must be new or empty; existing files and user data are preserved.' }
+$cursor = $publishOutput
+while ($cursor -and $cursor.StartsWith($projectRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Publish path cannot contain reparse points.' }
+    $cursor = [IO.Path]::GetDirectoryName($cursor)
+}
 $localSdk = Join-Path $projectRoot '.tools\dotnet\dotnet.exe'
 $sdk = if (Test-Path -LiteralPath $localSdk) { $localSdk } else { (Get-Command dotnet -ErrorAction Stop).Source }
 $env:DOTNET_CLI_HOME = Join-Path $projectRoot '.tools\cli-home'
@@ -20,18 +28,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 # These files are build outputs, unnecessary in the portable runtime.
 foreach ($symbolFile in Get-ChildItem -LiteralPath $publishOutput -Filter '*.pdb' -File) { Remove-Item -LiteralPath $symbolFile.FullName }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $publishOutput
-if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\verification.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\verification.md') -Destination (Join-Path $publishOutput 'verification.md') }
-if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\icon-processing.md')) { Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\icon-processing.md') -Destination (Join-Path $publishOutput 'icon-processing.md') }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $publishOutput 'QuickCapture-NOTICES.txt')
 $mediaSource = Join-Path $projectRoot 'vendor\media'
-if ((Test-Path -LiteralPath (Join-Path $mediaSource 'ffmpeg.exe')) -and (Test-Path -LiteralPath (Join-Path $mediaSource 'ffprobe.exe'))) {
-    $mediaManifest = Get-Content -LiteralPath (Join-Path $mediaSource 'manifest.json') -Raw | ConvertFrom-Json
-    foreach ($mediaName in @('ffmpeg', 'ffprobe')) { if ((Get-FileHash -LiteralPath (Join-Path $mediaSource "$mediaName.exe") -Algorithm SHA256).Hash -ne $mediaManifest."${mediaName}Sha256") { throw "$mediaName.exe 与固定版本清单不符，请运行 tools/setup-media.ps1。" } }
-    $mediaDestination = Join-Path $publishOutput 'Tools\media'
-    New-Item -ItemType Directory -Path $mediaDestination -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $mediaSource 'ffmpeg.exe'), (Join-Path $mediaSource 'ffprobe.exe') -Destination $mediaDestination
-    if (Test-Path -LiteralPath (Join-Path $mediaSource 'manifest.json')) { Copy-Item -LiteralPath (Join-Path $mediaSource 'manifest.json') -Destination $mediaDestination }
-} else { Write-Warning 'FFmpeg 未捆绑：运行 tools/setup-media.ps1 后重新构建；当前仍可录制并保存原生 MP4。' }
+$mediaManifest = Get-Content -LiteralPath (Join-Path $mediaSource 'manifest.json') -Raw | ConvertFrom-Json
+if ($mediaManifest.layout -ne 'shared' -or -not $mediaManifest.files) { throw 'Shared FFmpeg runtime is not prepared. Run tools/build-media.ps1 or tools/setup-media.ps1 -ArchivePath.' }
+$mediaDestination = Join-Path $publishOutput 'Tools\media'
+New-Item -ItemType Directory -Path $mediaDestination -Force | Out-Null
+foreach ($file in $mediaManifest.files) {
+    if ($file.name -ne [IO.Path]::GetFileName($file.name) -or $file.name -notmatch '\.(exe|dll)$') { throw 'Invalid media manifest filename.' }
+    $path = Join-Path $mediaSource $file.name
+    if (-not (Test-Path -LiteralPath $path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $file.sha256) { throw "Shared media dependency missing or changed: $($file.name)" }
+    Copy-Item -LiteralPath $path -Destination $mediaDestination
+}
+Copy-Item -LiteralPath (Join-Path $mediaSource 'manifest.json'),(Join-Path $mediaSource 'build-inputs.json') -Destination $mediaDestination
 $licenseDestination = Join-Path $publishOutput 'licenses'
 $ocrManifestPath = Join-Path $projectRoot 'vendor\ocr\manifest.json'
 $ocrManifest = Get-Content -LiteralPath $ocrManifestPath -Raw | ConvertFrom-Json
@@ -51,19 +60,15 @@ if (Test-Path -LiteralPath $unusedOcrNative) {
     Remove-Item -LiteralPath $resolvedOcrNative -Recurse -Force
 }
 New-Item -ItemType Directory -Path $licenseDestination -Force | Out-Null
-foreach ($licenseFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs\licenses') -File) { Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Force }
+foreach ($licenseFile in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'docs\licenses')) { Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Recurse -Force }
 $upgradeDocs = Join-Path $publishOutput 'docs'
 New-Item -ItemType Directory -Path $upgradeDocs -Force | Out-Null
-foreach ($document in @('settings-categories-and-mosaic.md', 'editable-media.md', 'recording-reedit.md', 'recording-editor-and-context-toolbar.md', 'toolbar-and-previews.md', 'office-tools.md', 'ocr-options.md', 'roadmap.md', 'feature-upgrade.md', 'in-place-text.md', 'panel-optimization.md', 'recording-preferences.md', 'design-spec.md', 'media-tools.md', 'verification.md', 'icon-processing.md')) {
-    $documentationSource = Join-Path $projectRoot "docs\$document"
-    if (Test-Path -LiteralPath $documentationSource) { Copy-Item -LiteralPath $documentationSource -Destination $upgradeDocs -Force }
-}
-$documentationImages = Join-Path $projectRoot 'docs\images'
-if (Test-Path -LiteralPath $documentationImages) { Copy-Item -LiteralPath $documentationImages -Destination $upgradeDocs -Recurse -Force }
-# Keep the earlier root-level copies for portable-package compatibility.
-foreach ($document in @('design-spec.md', 'media-tools.md')) {
-    if (Test-Path -LiteralPath (Join-Path $projectRoot "docs\$document")) { Copy-Item -LiteralPath (Join-Path $projectRoot "docs\$document") -Destination $publishOutput }
-}
+# User-facing install help and licenses are shipped; development records and
+# historical preview images remain in the source tree.
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\installer.md') -Destination $upgradeDocs
+$readmeImages = Join-Path $upgradeDocs 'images'
+New-Item -ItemType Directory -Path $readmeImages -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\images\main-simplified-light.png') -Destination $readmeImages
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $publishOutput 'QuickCapture.runtimeconfig.json') -Raw | ConvertFrom-Json
 foreach ($framework in $runtimeConfig.runtimeOptions.includedFrameworks) {
     if ($framework.name -eq 'Microsoft.NETCore.App') { $label = 'Core'; $packageName = 'microsoft.netcore.app.runtime.win-x64' }
@@ -74,10 +79,16 @@ foreach ($framework in $runtimeConfig.runtimeOptions.includedFrameworks) {
     Copy-Item -LiteralPath (Join-Path $packageRoot $licenseName) -Destination (Join-Path $publishOutput "DotNet-$label-LICENSE.txt")
     if ($label -eq 'Core') { Copy-Item -LiteralPath (Join-Path $packageRoot 'THIRD-PARTY-NOTICES.TXT') -Destination (Join-Path $publishOutput 'DotNet-Core-NOTICES.txt') }
 }
+$files = @(Get-ChildItem -LiteralPath $publishOutput -File -Recurse | Sort-Object FullName | ForEach-Object {
+    [ordered]@{path=[IO.Path]::GetRelativePath($publishOutput, $_.FullName).Replace('\','/');size=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+})
+$manifest = [ordered]@{schema=1;version=(Get-Item -LiteralPath (Join-Path $publishOutput 'QuickCapture.exe')).VersionInfo.ProductVersion.Split('+')[0];sourceCommit=(& git -C $projectRoot rev-parse HEAD).Trim();files=$files}
+[IO.File]::WriteAllText((Join-Path $publishOutput 'payload-manifest.json'), ($manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+. (Join-Path $PSScriptRoot 'ReleasePayload.ps1')
+$null = Assert-QuickCaptureReleasePayload $publishOutput
 if ($Test) {
     $testArgs = @('--self-test','--audio')
     if ($Microphone) { $testArgs += '--microphone' }
-    $process = Start-Process -FilePath (Join-Path $publishOutput 'QuickCapture.exe') -ArgumentList $testArgs -WindowStyle Hidden -PassThru -Wait
-    if ($process.ExitCode -ne 0) { throw 'Integration tests failed. Read dist\Diagnostics\results.json.' }
+    & (Join-Path $PSScriptRoot 'test.ps1') -Offline:$Offline -SourceDirectory $publishOutput -Arguments $testArgs
 }
 Write-Output (Join-Path $publishOutput 'QuickCapture.exe')

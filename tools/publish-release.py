@@ -1,4 +1,4 @@
-"""Publish a verified portable release. Git credentials stay in process memory."""
+"""Publish the verified installer and portable release. Credentials stay in memory."""
 import argparse
 import hashlib
 import http.client
@@ -32,6 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("inspect", "publish"))
     parser.add_argument("--version", required=True, help="Release version, for example 0.7.0")
+    parser.add_argument("--notes-file", type=Path, help="UTF-8 release notes prepared for this release")
     options = parser.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+", options.version):
         raise SystemExit("Use a three-part numeric version.")
@@ -91,7 +92,7 @@ def main():
         connection.putheader("Authorization", "Bearer " + token)
         connection.putheader("Accept", "application/vnd.github+json")
         connection.putheader("User-Agent", "QuickCapture-Release")
-        connection.putheader("Content-Type", "application/zip" if path.suffix == ".zip" else "text/plain")
+        connection.putheader("Content-Type", "application/zip" if path.suffix == ".zip" else "application/octet-stream" if path.suffix == ".exe" else "text/plain")
         connection.putheader("Content-Length", str(path.stat().st_size))
         connection.endheaders()
         sent, last = 0, 0
@@ -141,10 +142,24 @@ def main():
     project_version = ET.parse(ROOT / "src/QuickCapture.csproj").findtext("PropertyGroup/Version")
     if project_version != options.version:
         raise SystemExit("Release and project versions differ.")
-    package = ROOT / "artifacts/QuickCapture-win-x64.zip"
-    checksum = package.with_suffix(".zip.sha256")
-    checksum.write_text(sha256(package) + "  " + package.name + "\n", encoding="ascii")
-    notes = (ROOT / "docs/releases" / (tag + ".md")).read_text(encoding="utf-8-sig")
+    manifest = json.loads((ROOT / "artifacts/release-manifest.json").read_text(encoding="utf-8-sig"))
+    if manifest["version"] != options.version or manifest.get("sourceCommit") != commit or manifest["installerChecksPassed"] < 3:
+        raise SystemExit("Release manifest is not the verified build of this commit.")
+    payload = Path(manifest["applicationDirectory"])
+    if sha256(payload / "QuickCapture.dll") != manifest["applicationDllSha256"]:
+        raise SystemExit("The verified application DLL changed.")
+    packages = []
+    for kind in ("portable", "installer"):
+        package = Path(manifest[kind]["path"])
+        if not package.resolve().is_relative_to((ROOT / "artifacts").resolve()) or sha256(package) != manifest[kind]["sha256"]:
+            raise SystemExit("Release package checksum or path mismatch.")
+        checksum = Path(str(package) + ".sha256")
+        if checksum.read_text(encoding="ascii").split()[0] != manifest[kind]["sha256"]:
+            raise SystemExit("Package checksum file differs.")
+        packages.extend((package, checksum))
+    if options.notes_file is None:
+        raise SystemExit("Provide the reviewed release notes with --notes-file.")
+    notes = options.notes_file.read_text(encoding="utf-8-sig")
     item = release()
     tag_ref = api(REPO + "/git/ref/tags/" + tag, allow_missing=True)
     if item is None:
@@ -155,8 +170,8 @@ def main():
         print("Created draft " + tag, flush=True)
     elif item["target_commitish"] != commit or (tag_ref is not None and tag_ref["object"]["sha"] != commit):
         raise SystemExit("Existing release or tag targets another commit; refusing to replace it.")
-    upload(item, package)
-    upload(release(), checksum)
+    for package in packages:
+        upload(release(), package)
     item = release()
     if item["draft"]:
         item = api(REPO + "/releases/" + str(item["id"]), {"draft": False, "make_latest": "true"}, method="PATCH")
