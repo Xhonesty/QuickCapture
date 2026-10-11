@@ -85,7 +85,9 @@ internal static class ReleaseV1Tests
                     editor.SetTool(original.Kind); Outline();
                     Ensure(editor.Overlay.DraftStyle is { OutlineEnabled: true, OutlineWidth: 6 }, "New arrow/line draft lost its outline");
                     Set(editor.Overlay, "_anchor", new Point(original.X, original.Y)); Set(editor.Overlay, "_end", new Point(original.X + original.Width, original.Y + original.Height)); Set(editor.Overlay, "_dragging", true);
+                    editor.Overlay.InvalidateVisual(); await Dispatcher.Yield(DispatcherPriority.Render); dialog.UpdateLayout();
                     var draft = new RenderTargetBitmap((int)Math.Ceiling(editor.Overlay.ActualWidth), (int)Math.Ceiling(editor.Overlay.ActualHeight), 96, 96, PixelFormats.Pbgra32); draft.Render(editor.Overlay);
+                    var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(draft)); using (var output = File.Create(Path.Combine(UiChangeTests.PreviewDirectory, "release-v1-draft-" + original.Kind.ToString().ToLowerInvariant() + ".png"))) png.Save(output);
                     Ensure(Colored(UpgradeTests.Bytes(draft), true) > 20 && Colored(UpgradeTests.Bytes(draft), false) > 20, "Draft body or outline did not render");
                     Set(editor.Overlay, "_dragging", false); editor.SetTool(null);
                 }
